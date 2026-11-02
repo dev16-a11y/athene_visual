@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+client/node_modules/
+client/dist/
+client/.vite/
+
+# .NET
+**/bin/
+**/obj/
+server/.config/.dotnet-tools/
+
+# local configuration and secrets
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# logs and screenshots produced during checks
+*.log

@@ -1,0 +1,49 @@
+name: smarttwin
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smarttwin}
+      POSTGRES_USER: ${POSTGRES_USER:-smarttwin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smarttwin}
+      TZ: ${TZ:-Europe/Moscow}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - smarttwin_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://0.0.0.0:5080
+      ConnectionStrings__Postgres: "Host=db;Port=5432;Database=${POSTGRES_DB:-smarttwin};Username=${POSTGRES_USER:-smarttwin};Password=${POSTGRES_PASSWORD:-smarttwin}"
+      TZ: ${TZ:-Europe/Moscow}
+    ports:
+      - "${API_PORT:-5080}:5080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  smarttwin_pgdata:
