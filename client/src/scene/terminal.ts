@@ -154,22 +154,24 @@ export function buildTerminal(
   const ballast = box(
     scene,
     "rail-ballast",
-    { width: 424, height: 0.24, depth: 8.5, x: 0, y: 2.06, z: 87 },
+    { width: 424, height: 0.24, depth: 6.4, x: 0, y: 2.06, z: 87 },
     materials.ballast,
     roots.rail,
   );
   staticMeshes.push(ballast);
+  // Колея 1520 мм, как у моделей состава: внутренние грани головок на
+  // Z = 87 ± 0,76. Верх головки — Y = 2,35, на нём и лежат колёса.
   box(
     scene,
     "rail-left",
-    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 85.4 },
+    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 86.24 },
     materials.rail,
     roots.rail,
   );
   box(
     scene,
     "rail-right",
-    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 88.6 },
+    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 87.76 },
     materials.rail,
     roots.rail,
   );

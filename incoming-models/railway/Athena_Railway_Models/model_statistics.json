@@ -1,0 +1,128 @@
+[
+  {
+    "file": "diesel_shunter_6axle.glb",
+    "title": "Маневровый тепловоз · 6 осей",
+    "triangles": 85596,
+    "vertices": 110036,
+    "nodes": 35,
+    "bytes": 3724140,
+    "dimensions_xyz_m": [
+      3.71,
+      4.472,
+      17.52
+    ],
+    "coupler_pitch_m": 17.52
+  },
+  {
+    "file": "diesel_industrial_4axle.glb",
+    "title": "Промышленный тепловоз · 4 оси",
+    "triangles": 66252,
+    "vertices": 84052,
+    "nodes": 31,
+    "bytes": 2862444,
+    "dimensions_xyz_m": [
+      3.71,
+      4.472,
+      13.32
+    ],
+    "coupler_pitch_m": 13.32
+  },
+  {
+    "file": "diesel_mainline_2section.glb",
+    "title": "Магистральный тепловоз · 2 секции",
+    "triangles": 175552,
+    "vertices": 224009,
+    "nodes": 61,
+    "bytes": 7580048,
+    "dimensions_xyz_m": [
+      3.71,
+      4.472,
+      36.72
+    ],
+    "coupler_pitch_m": 36.72
+  },
+  {
+    "file": "wagon_container_platform.glb",
+    "title": "Фитинговая платформа · 2 × 40 футов",
+    "triangles": 59176,
+    "vertices": 66872,
+    "nodes": 22,
+    "bytes": 2351512,
+    "dimensions_xyz_m": [
+      3.114,
+      4.19,
+      26.72
+    ],
+    "coupler_pitch_m": 26.72
+  },
+  {
+    "file": "wagon_gondola.glb",
+    "title": "Полувагон",
+    "triangles": 61552,
+    "vertices": 61396,
+    "nodes": 21,
+    "bytes": 2243024,
+    "dimensions_xyz_m": [
+      3.25,
+      3.7378789192900843,
+      14.520000000000001
+    ],
+    "coupler_pitch_m": 14.520000000000001
+  },
+  {
+    "file": "wagon_grain_hopper.glb",
+    "title": "Зерновоз",
+    "triangles": 52132,
+    "vertices": 59900,
+    "nodes": 22,
+    "bytes": 2097480,
+    "dimensions_xyz_m": [
+      3.221,
+      4.792,
+      15.72
+    ],
+    "coupler_pitch_m": 15.72
+  },
+  {
+    "file": "wagon_tank.glb",
+    "title": "Цистерна",
+    "triangles": 57224,
+    "vertices": 68092,
+    "nodes": 23,
+    "bytes": 2356024,
+    "dimensions_xyz_m": [
+      3.084,
+      4.8260000000000005,
+      13.520000000000001
+    ],
+    "coupler_pitch_m": 13.520000000000001
+  },
+  {
+    "file": "wagon_covered.glb",
+    "title": "Крытый вагон",
+    "triangles": 51848,
+    "vertices": 58956,
+    "nodes": 21,
+    "bytes": 2069264,
+    "dimensions_xyz_m": [
+      3.518,
+      4.352,
+      16.32
+    ],
+    "coupler_pitch_m": 16.32
+  },
+  {
+    "file": "wagon_pipe_platform.glb",
+    "title": "Платформа с трубами",
+    "triangles": 55024,
+    "vertices": 61192,
+    "nodes": 23,
+    "bytes": 2162032,
+    "dimensions_xyz_m": [
+      3.104,
+      3.01,
+      15.32
+    ],
+    "coupler_pitch_m": 15.32
+  }
+]

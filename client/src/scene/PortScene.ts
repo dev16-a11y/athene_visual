@@ -51,6 +51,7 @@ import { buildCrane } from "./crane";
 import { buildTruck } from "./truck";
 import { buildTug } from "./tug";
 import { buildTrain } from "./train";
+import { railTemplateInfo } from "./railway";
 import { buildWarehouses } from "./warehouses";
 import { buildBackground } from "./background";
 import type { EntityVisual } from "./entityVisual";
@@ -155,6 +156,12 @@ export class PortScene {
             motionCounters: () => unknown;
             selectEntity: (id: string | null) => unknown;
             selectionMarker: () => unknown;
+            trainProbe: () => unknown;
+            trainState: () => unknown;
+            trainStats: () => unknown;
+            focusEntity: (id: string) => unknown;
+            railProbe: () => Promise<unknown>;
+            trainSetX: (x: number) => unknown;
             scene: Scene;
           };
         }
@@ -185,6 +192,18 @@ export class PortScene {
         selectEntity: (id: string | null) => {
           store.select(id);
           return { selectedId: this.selectedId };
+        },
+        trainProbe: () => this.probeTrain(),
+        trainState: () => this.visuals.get("train-01")?.consist?.snapshot() ?? null,
+        trainStats: () => this.visuals.get("train-01")?.consist?.stats ?? null,
+        focusEntity: (id: string) => {
+          this.focusEntity(id);
+          return { focused: id };
+        },
+        railProbe: () => railTemplateInfo(this.scene),
+        trainSetX: (x: number) => {
+          this.visuals.get("train-01")?.consist?.debugSetX(x);
+          return this.probeTrain();
         },
         selectionMarker: () => ({
           selectedId: this.selectedId,
@@ -391,8 +410,83 @@ export class PortScene {
     return [...this.visuals.values()].map(read).filter(Boolean);
   }
 
-  private async setupPhysics(): Promise<void> {
-    const handle = await enablePhysics(this.scene);
+  /**
+   * Состояние состава и его габариты в мире: для проверок в браузере.
+   * Показывает, где стоят машины, как легли колёса на рельс и что с грузом.
+   */
+  private probeTrain(): unknown {
+    const visual = this.visuals.get("train-01");
+    const consist = visual?.consist;
+    if (!visual || !consist) {
+      return { ready: false };
+    }
+    const vehicles = consist.vehicles.map((vehicle) => {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const mesh of vehicle.root.getChildMeshes()) {
+        mesh.computeWorldMatrix(true);
+        mesh.refreshBoundingInfo(false, false);
+        const box = mesh.getBoundingInfo().boundingBox;
+        minX = Math.min(minX, box.minimumWorld.x);
+        maxX = Math.max(maxX, box.maximumWorld.x);
+        minY = Math.min(minY, box.minimumWorld.y);
+        maxY = Math.max(maxY, box.maximumWorld.y);
+        minZ = Math.min(minZ, box.minimumWorld.z);
+        maxZ = Math.max(maxZ, box.maximumWorld.z);
+      }
+      const wheels = vehicle.axles[0];
+      wheels?.computeWorldMatrix(true);
+      wheels?.refreshBoundingInfo(false, false);
+      const wheelBox = wheels?.getBoundingInfo().boundingBox;
+      return {
+        key: vehicle.key,
+        offset: Number(vehicle.offset.toFixed(3)),
+        roll: Number(vehicle.roll.toFixed(3)),
+        axles: vehicle.axles.length,
+        cargo: vehicle.cargo.filter((mesh) => mesh.isEnabled()).length,
+        cargoTotal: vehicle.cargo.length,
+        bounds: {
+          minX: Number(minX.toFixed(3)),
+          maxX: Number(maxX.toFixed(3)),
+          minY: Number(minY.toFixed(3)),
+          maxY: Number(maxY.toFixed(3)),
+          minZ: Number(minZ.toFixed(3)),
+          maxZ: Number(maxZ.toFixed(3)),
+        },
+        wheelCentreZ: wheelBox
+          ? Number(((wheelBox.minimumWorld.z + wheelBox.maximumWorld.z) / 2).toFixed(3))
+          : null,
+        rootY: Number(vehicle.root.position.y.toFixed(3)),
+        wheelOrigin: wheels
+          ? wheels.position.asArray().map((value) => Number(value.toFixed(2)))
+          : null,
+        rootWorldY: Number(vehicle.root.getAbsolutePosition().y.toFixed(3)),
+        wheelSpanZ: wheelBox
+          ? Number((wheelBox.maximumWorld.z - wheelBox.minimumWorld.z).toFixed(3))
+          : null,
+      };
+    });
+    return {
+      ready: true,
+      x: Number(consist.x.toFixed(3)),
+      speed: Number(consist.speed.toFixed(3)),
+      state: consist.state,
+      bounds: consist.bounds,
+      length: Number(consist.length.toFixed(2)),
+      root: {
+        x: Number(visual.root.position.x.toFixed(3)),
+        y: Number(visual.root.position.y.toFixed(3)),
+        z: Number(visual.root.position.z.toFixed(3)),
+      },
+      vehicles,
+    };
+  }
+
+  private async setupPhysics(): Promise<void> {    const handle = await enablePhysics(this.scene);
     addGroundCollider(this.scene, 2);
     console.info(
       `[physics] ${handle.pluginName}: тел ${countBodies(this.scene)}`,

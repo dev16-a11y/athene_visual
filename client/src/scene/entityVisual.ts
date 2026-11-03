@@ -3,6 +3,7 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { EntityKind, PortEntity, Snapshot } from "../domain/types";
 import type { EntityMotion } from "./motion";
 import type { RouteKey } from "./routes";
+import type { TrainConsist } from "./railway";
 
 export interface EntityVisual {
   id: string;
@@ -23,6 +24,8 @@ export interface EntityVisual {
     baseY: number;
   };
   motion?: EntityMotion;
+  /** Состав: раскладка машин, колёса и кинематика (только для поезда). */
+  consist?: TrainConsist;
   update: (entity: PortEntity, snapshot: Snapshot) => void;
   tick?: (timeSeconds: number, deltaSeconds: number) => void;
   /**
