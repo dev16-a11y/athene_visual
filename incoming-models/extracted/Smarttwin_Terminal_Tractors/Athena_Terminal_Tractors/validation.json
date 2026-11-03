@@ -1,0 +1,71 @@
+[
+  {
+    "file": "kalmar_ottawa_t2.glb",
+    "passed": true,
+    "triangles": 119366,
+    "bytes": 4414528,
+    "nodes": 25,
+    "checked": [
+      "GLB headers",
+      "buffers",
+      "indices",
+      "finite geometry",
+      "unit normals",
+      "normal orientation",
+      "nondegenerate triangles",
+      "UV",
+      "embedded PNG"
+    ],
+    "not_tested": [
+      "Babylon.js runtime",
+      "Khronos validator",
+      "engineering accuracy"
+    ]
+  },
+  {
+    "file": "terberg_yt193.glb",
+    "passed": true,
+    "triangles": 119366,
+    "bytes": 4412032,
+    "nodes": 25,
+    "checked": [
+      "GLB headers",
+      "buffers",
+      "indices",
+      "finite geometry",
+      "unit normals",
+      "normal orientation",
+      "nondegenerate triangles",
+      "UV",
+      "embedded PNG"
+    ],
+    "not_tested": [
+      "Babylon.js runtime",
+      "Khronos validator",
+      "engineering accuracy"
+    ]
+  },
+  {
+    "file": "terberg_yt220.glb",
+    "passed": true,
+    "triangles": 119366,
+    "bytes": 4411712,
+    "nodes": 25,
+    "checked": [
+      "GLB headers",
+      "buffers",
+      "indices",
+      "finite geometry",
+      "unit normals",
+      "normal orientation",
+      "nondegenerate triangles",
+      "UV",
+      "embedded PNG"
+    ],
+    "not_tested": [
+      "Babylon.js runtime",
+      "Khronos validator",
+      "engineering accuracy"
+    ]
+  }
+]

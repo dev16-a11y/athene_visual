@@ -418,6 +418,9 @@ export function buildCrane(
   let currentSpreaderY = 26;
   const phase = crane.id.charCodeAt(crane.id.length - 1) * 0.8;
   hangingContainer.isVisible = crane.spreaderLoad === 1;
+  // После подмены GLB-моделью параметрические тележка, спредер и маяк
+  // отключаются: анимировать удалённую геометрию нельзя.
+  const swapState = { active: false };
 
   const applyStatus = (status: Crane["status"]) => {
     if (status === "maintenance") {
@@ -458,7 +461,18 @@ export function buildCrane(
       hangingContainer.isVisible = current.spreaderLoad === 1;
       applyStatus(current.status);
     },
+    onModelSwap: () => {
+      // Внешняя модель крана заменяет и тележку со спредером: анимация
+      // параметрических узлов после подмены не имеет смысла.
+      swapState.active = true;
+      trolleyRoot.setEnabled(false);
+      spreaderRoot.setEnabled(false);
+      beacon.setEnabled(false);
+    },
     tick: (time, deltaSeconds) => {
+      if (swapState.active) {
+        return;
+      }
       targetTrolleyZ = -30 + Math.sin(time * 0.22 + phase) * 9;
       trolleyRoot.position.z +=
         (targetTrolleyZ - trolleyRoot.position.z) *

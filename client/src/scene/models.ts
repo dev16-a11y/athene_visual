@@ -29,31 +29,92 @@ export interface EntityModelSpec {
   offsetY?: number;
   /** Добавлять меши модели в тени. */
   shadow?: boolean;
+  /**
+   * Сливать меши модели в один. По умолчанию выключено: у моделей с разными
+   * наборами атрибутов вершин слияние либо падает, либо даёт битые буферы.
+   */
+  merge?: boolean;
 }
 
 export const MODEL_MANIFEST: Partial<Record<string, EntityModelSpec>> = {
-  // Quaternius, CC0: https://poly.pizza/m/cXw6oiFtZ8
-  truck: {
-    url: "/models/truck-quaternius.glb",
-    fitLength: 14,
-    offsetY: 0.4,
-    shadow: true,
-  },
   // Quaternius, CC0: https://poly.pizza/m/W2vMzztgIi
   tug: {
     url: "/models/tug-small-ship.glb",
     fitLength: 30,
     shadow: true,
   },
-  // Sketlux, CC0: https://opengameart.org/content/container-ship-full
-  // Конвертация blend→glb: tools/blender, src в public/models/src.
-  vessel: {
+  // Sketlux, CC0 (оставлено как запасной вариант, если новая модель недоступна).
+  vesselFallback: {
     url: "/models/src/container-ship-full.glb",
     fitLength: 190,
     offsetY: 1.5,
     shadow: true,
   },
+  // Проектные модели Smarttwin (входящие архивы, см. README).
+  // Aurora: 185 м по корпусу, длина модели по Z → поворот на 90°.
+  vessel: {
+    url: "/models/ship-aurora.glb",
+    fitLength: 190,
+    rotationY: Math.PI / 2,
+    offsetY: -2,
+    shadow: true,
+  },
+  // STS-кран: стрела уже направлена в −Z (морская сторона), как в сцене.
+  crane: {
+    url: "/models/crane-sts.glb",
+    fitLength: 80,
+    shadow: true,
+  },
+  // Тягачи: нос модели смотрит в +Z, в сцене техника едет по +X.
+  tractorTerbergYt220: {
+    url: "/models/tractor-terberg-yt220.glb",
+    fitLength: 7,
+    rotationY: Math.PI / 2,
+    shadow: true,
+  },
+  tractorTerbergYt193: {
+    url: "/models/tractor-terberg-yt193.glb",
+    fitLength: 7,
+    rotationY: Math.PI / 2,
+    shadow: true,
+  },
+  tractorKalmarT2: {
+    url: "/models/tractor-kalmar-t2.glb",
+    fitLength: 7,
+    rotationY: Math.PI / 2,
+    shadow: true,
+  },
 };
+
+/**
+ * Распределение вариантов по сущностям одного типа. Выбор детерминирован
+ * по id, поэтому конкретный тягач не меняется между перезагрузками.
+ */
+export const MODEL_VARIANTS: Record<string, string[]> = {
+  truck: ["tractorTerbergYt220", "tractorTerbergYt193", "tractorKalmarT2"],
+};
+
+/**
+ * Ключ манифеста для конкретной сущности: вариант из MODEL_VARIANTS или
+ * сам тип. undefined — модели нет, остаётся параметрическая геометрия.
+ */
+export function resolveModelKey(
+  kind: string,
+  id: string,
+): string | undefined {
+  const variants = MODEL_VARIANTS[kind];
+  if (variants && variants.length > 0) {
+    let hash = 0;
+    for (let index = 0; index < id.length; index++) {
+      hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+    }
+    const key = variants[hash % variants.length];
+    if (MODEL_MANIFEST[key]) {
+      return key;
+    }
+  }
+  return MODEL_MANIFEST[kind] ? kind : undefined;
+}
 
 interface LoadedTemplate {
   /** Внешний узел (только поворот); клоны создаются под каждую сущность. */
@@ -98,7 +159,7 @@ export function loadEntityModel(
         const mergeable = imported.filter(
           (mesh): mesh is Mesh => mesh instanceof Mesh && mesh.getTotalVertices() > 0,
         );
-        if (mergeable.length > 1) {
+        if (spec.merge && mergeable.length > 1) {
           try {
             const merged = Mesh.MergeMeshes(
               mergeable,
@@ -186,7 +247,6 @@ export interface ModelSwapResult {
   /** Меши клона модели — новый список мешей визуала. */
   meshes: AbstractMesh[];
 }
-
 /**
  * Подменяет визуал сущности внешней моделью: клонирует загруженный шаблон
  * внутрь entityRoot, переносит тени и метаданные. Вызывающий сам удаляет

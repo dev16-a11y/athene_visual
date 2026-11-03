@@ -36,7 +36,7 @@ import { createMaterials, type PortMaterials } from "./materials";
 import { buildTerminal, createTerminalRoots } from "./terminal";
 import { createWater, type WaterView } from "./water";
 import { swapInModel } from "./models";
-import { MODEL_MANIFEST } from "./models";
+import { resolveModelKey } from "./models";
 import { buildYard } from "./yard";
 import { buildVessel } from "./vessel";
 import { buildCrane } from "./crane";
@@ -365,8 +365,9 @@ export class PortScene {
 
   private buildVisual(entity: PortEntity): EntityVisual | null {
     const visual = this.buildParametricVisual(entity);
-    if (visual && MODEL_MANIFEST[entity.kind]) {
-      this.swapModelAsync(visual, entity.kind);
+    const modelKey = resolveModelKey(entity.kind, entity.id);
+    if (visual && modelKey) {
+      this.swapModelAsync(visual, modelKey);
     }
     return visual;
   }

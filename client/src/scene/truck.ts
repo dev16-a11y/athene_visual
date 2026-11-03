@@ -1,5 +1,6 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Truck } from "../domain/types";
@@ -85,8 +86,11 @@ export function buildTruck(
   let targetHeading = truck.heading;
   truckRoot.rotation.y = (truck.heading * Math.PI) / 180;
 
-  // После подмены GLB-моделью контейнер-параметрика удалён.
+  // После подмены GLB-моделью параметрика удаляется, но терминальный тягач
+  // работает с прицепом-шасси и контейнером: достраиваем их за кабиной,
+  // иначе машина «теряет» груз.
   const swapState = { active: false };
+  let swappedContainer: Mesh | null = null;
 
   return {
     id: truck.id,
@@ -101,12 +105,38 @@ export function buildTruck(
       const current = entity as Truck;
       target.set(current.position.x, 2, current.position.z);
       targetHeading = current.heading;
-      if (!swapState.active) {
-        container.isVisible = current.loaded;
+      if (swapState.active) {
+        if (swappedContainer) {
+          swappedContainer.isVisible = current.loaded;
+        }
+        return;
       }
+      container.isVisible = current.loaded;
     },
     onModelSwap: () => {
       swapState.active = true;
+      if (swappedContainer) {
+        return;
+      }
+      const chassis = box(
+        scene,
+        "truck-chassis",
+        { width: 12.8, height: 0.42, depth: 2.45, x: -9.4, y: 1.3 },
+        materials.truckTrailer,
+        truckRoot,
+      );
+      swappedContainer = box(
+        scene,
+        "truck-chassis-container",
+        { width: 12.19, height: 2.59, depth: 2.44, x: -9.4, y: 2.8 },
+        materials.container[0] ?? materials.steelBlue,
+        truckRoot,
+      );
+      swappedContainer.isVisible = truck.loaded;
+      for (const mesh of [chassis, swappedContainer]) {
+        mesh.metadata = { ...(mesh.metadata ?? {}), entityId: truck.id };
+        shadow.addShadowCaster(mesh, true);
+      }
     },
   };
 }

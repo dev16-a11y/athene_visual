@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "non_cargo_geometry": "identical to previous GLB by SHA-256 of geometry attributes and indices",
+  "carrier_counts": {
+    "ZIM": 46,
+    "Maersk": 86,
+    "Hapag-Lloyd": 46,
+    "MSC": 86,
+    "CMA CGM": 68
+  },
+  "bow_to_stern": [
+    "ZIM",
+    "Maersk",
+    "Hapag-Lloyd",
+    "MSC",
+    "CMA CGM"
+  ],
+  "total_containers": 332,
+  "continuous_blocks": true,
+  "one_carrier_per_bay": true
+}

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "triangles": 11664,
+  "nodes": 10,
+  "materials": 8,
+  "file_bytes": 855832,
+  "checks": [
+    "GLB header and lengths",
+    "buffer bounds",
+    "finite coordinates",
+    "normal lengths and orientation",
+    "non-degenerate triangles"
+  ],
+  "not_checked": [
+    "Khronos validator",
+    "Babylon.js runtime",
+    "Blender import"
+  ]
+}

@@ -252,16 +252,21 @@ dotnet tool run dotnet-ef migrations list --project Smarttwin.Api --startup-proj
 
 | Сущность | Модель | Автор / лицензия |
 | --- | --- | --- |
-| Судно (ORION, VEGA) | `container-ship-full.glb` (конвертация из `container-ship-full.blend`) | Sketlux, [CC0](https://opengameart.org/content/container-ship-full) |
+| Судно (ORION, VEGA) | `ship-aurora.glb` (Aurora, 185 м, 226k треугольников) | проект Smarttwin, предоставлена заказчиком; лицензия не указана |
+| Причальный кран (все 6) | `crane-sts.glb` (STS, стрела в −Z, 12k треугольников) | проект Smarttwin, предоставлена заказчиком; лицензия не указана |
+| Тягачи | `tractor-terberg-yt220.glb`, `tractor-terberg-yt193.glb`, `tractor-kalmar-t2.glb` | проект Smarttwin, предоставлены заказчиком; лицензия не указана |
 | Буксир | `tug-small-ship.glb` | Quaternius, [CC0](https://poly.pizza/m/W2vMzztgIi) |
-| Автотранспорт | `truck-quaternius.glb` | Quaternius, [CC0](https://poly.pizza/m/cXw6oiFtZ8) |
+| Запасное судно | `src/container-ship-full.glb` (Sketlux) | Sketlux, [CC0](https://opengameart.org/content/container-ship-full) |
 
-Краны, склады и прочая геометрия терминала остаются параметрическими:
-подходящих свободных STS-моделей не найдено (найденные краны — строительные,
-CC-BY); параметрический вариант визуально ближе к референсу.
+Исходные архивы — `incoming-models/`, распакованные версии — `incoming-models/extracted/`
+(вне `public/`, поэтому не раздаются и не попадают в сборку). В `client/public/models/`
+лежат только те GLB, которые реально загружаются сценой.
 
-Конвертация `.blend → .glb` выполнялась portable Blender 4.2.3
-(`blender --background --python public/models/src/convert.py -- in.blend out.glb`).
+Три тягача распределяются по сущностям `truck` детерминированно по id
+(`MODEL_VARIANTS`); после подмены к тягачу достраивается шасси с контейнером,
+поэтому груз на машинах сохраняется.
+
+Склады, резервуары, вагоны и фон остаются параметрическими.
 
 ### Недостающие ресурсы и что остаётся временным
 
@@ -282,6 +287,71 @@ fitLength, rotationX/Y, offsetY, тени). Новый ресурс подклю
 Остаются временными (процедурная геометрия): краны, контейнеры, вагоны,
 склады, техника, разметка и текстуры покрытий. Они помечены в коде как
 параметрические и заменяются через манифест моделей.
+
+### Как подключить свою модель (кран, тягачи, что угодно)
+
+Архивы с моделями кладутся в `incoming-models/` (вне `public/`, чтобы не
+раздувать сборку) и распаковываются скриптом:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File client\scripts\unpack-models.ps1
+```
+
+Скрипт распакует каждый `.zip` в `client/public/models/incoming/<имя-архива>/`
+и напечатает найденные `.glb/.gltf/.bin/текстуры`. Браузер не умеет читать
+`.zip`: загружается только распакованный `.glb` (предпочтительно) либо
+`.gltf` вместе с `.bin` и текстурами в той же папке.
+
+1. Положите файл в `client/public/models/` (имя латиницей, без пробелов).
+2. Снимите габариты и получите готовую запись манифеста:
+
+   ```powershell
+   cd client
+   node scripts/model-info.mjs public/models/my-crane.glb --kind=crane --fit=48
+   ```
+
+   `--fit` — желаемая длина объекта в метрах (кран STS ≈ 45–50 м по консолям,
+   тягач ≈ 7–9 м).
+3. Вставьте запись в `MODEL_MANIFEST` (`client/src/scene/models.ts`):
+
+   ```ts
+   crane: {
+     url: "/models/my-crane.glb",
+     fitLength: 48,
+     rotationY: Math.PI / 2,   // если смотрит не вдоль причала
+     rotationX: -Math.PI / 2,  // если модель из Z-up редактора
+     offsetY: 0,
+     shadow: true,
+   },
+   ```
+
+4. Если моделей несколько одного типа (например, три тягача), заведите
+   отдельные ключи и распределение:
+
+   ```ts
+   truckA: { url: "/models/tractor-a.glb", fitLength: 8, shadow: true },
+   truckB: { url: "/models/tractor-b.glb", fitLength: 8, shadow: true },
+   truckC: { url: "/models/tractor-c.glb", fitLength: 8, shadow: true },
+
+   export const MODEL_VARIANTS = {
+     truck: ["truckA", "truckB", "truckC"],
+   };
+   ```
+
+   Вариант выбирается детерминированно по id сущности, поэтому один и тот же
+   тягач не «переобувается» между перезагрузками.
+5. Перезапустите dev-сервер (Vite не раздаёт файлы, добавленные в `public/`
+   после старта) и проверьте консоль: сообщение
+   `[models] не удалось загрузить ...` означает, что путь или файл неверны.
+
+Подмена выполняется внутри существующего `EntityVisual`: метаданные
+`entityId`, выбор объекта, тени и бизнес-логика сохраняются. При любой ошибке
+загрузки сцена остаётся на параметрической геометрии.
+
+Ограничения: кран анимирует тележку и спредер — после подмены модели эта
+анимация отключается (`onModelSwap`), внешняя модель должна содержать
+собственную тележку. Модели с разными наборами атрибутов вершин не сливаются
+в один меш, поэтому каждая добавляет draw calls.
 
 ## Тесты и проверки
 
