@@ -1,4 +1,4 @@
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import type { Scene } from "@babylonjs/core/scene";
@@ -93,9 +93,11 @@ export function buildTug(
   tagEntity(tugRoot, tug.id);
   castShadows(shadow, tugRoot);
 
-  const target = new Vector3(tug.position.x, 0, tug.position.z);
-  let targetHeading = tug.heading;
-  tugRoot.rotation.y = (tug.heading * Math.PI) / 180;
+  tugRoot.rotationQuaternion = Quaternion.FromEulerAngles(
+    0,
+    (tug.heading * Math.PI) / 180,
+    0,
+  );
 
   return {
     id: tug.id,
@@ -105,11 +107,11 @@ export function buildTug(
     selectionMeshes: [hull, cabin],
     markerY: 8,
     focusRadius: 140,
-    dynamic: { target, targetHeading, snapDistance: 150 },
-    update: (entity) => {
-      const current = entity as Tug;
-      target.set(current.position.x, 0, current.position.z);
-      targetHeading = current.heading;
+    // Курс берётся из касательной к эллипсу, поэтому на дуге корпус
+    // разворачивается вместе с траекторией, а не по хорде.
+    dynamic: { routeKey: "tug-ellipse", baseY: 0 },
+    update: () => {
+      // Положение и курс считает EntityMotion по эллипсу.
     },
   };
 }

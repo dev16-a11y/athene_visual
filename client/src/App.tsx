@@ -119,16 +119,22 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    void import("./scene/PortScene").then(({ PortScene }) => {
+    void import("./scene/PortScene").then(async ({ PortScene }) => {
       if (cancelled || !canvasRef.current || sceneRef.current) {
         return;
       }
-      sceneRef.current = PortScene.create(
+      // Создание асинхронное: WebGPU-движку нужно дождаться адаптера.
+      const scene = await PortScene.create(
         canvasRef.current,
         snapshot,
         (frame) => store.set({ diagnostics: frame }),
         (next) => setSceneLabels(next),
       );
+      if (cancelled) {
+        scene.dispose();
+        return;
+      }
+      sceneRef.current = scene;
     });
     return () => {
       cancelled = true;

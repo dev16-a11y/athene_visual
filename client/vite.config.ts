@@ -16,6 +16,9 @@ const optimizeDeps = {
     "@babylonjs/core/Materials/imageProcessingConfiguration",
     "@babylonjs/core/Materials/standardMaterial",
   ],
+  // Havok ищет .wasm рядом с собой по import.meta.url. В предсобранном виде
+  // (.vite/deps) бинарника нет, поэтому модуль оставляем как есть.
+  exclude: ["@babylonjs/havok"],
 };
 
 export default defineConfig({

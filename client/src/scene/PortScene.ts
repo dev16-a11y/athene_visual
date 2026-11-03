@@ -1,16 +1,24 @@
-import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
+import { createPortEngine } from "./engine";
+import type { CreatedEngine, PortEngine } from "./engine";
+import {
+  addGroundCollider,
+  countBodies,
+  enablePhysics,
+  spawnTestCrate,
+} from "./physics";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { PointerEventTypes } from "@babylonjs/core/Events/pointerEvents";
 import type { Observer } from "@babylonjs/core/Misc/observable";
@@ -46,11 +54,33 @@ import { buildTrain } from "./train";
 import { buildWarehouses } from "./warehouses";
 import { buildBackground } from "./background";
 import type { EntityVisual } from "./entityVisual";
+import { EntityMotion } from "./motion";
+import { runMotionSelfTest } from "./motionSelfTest";
+import { demoRoute } from "./routes";
 
 const OUTLINE_COLOR = "#3fd3ff";
 
+/** Диаметр маркера выбора для разных типов объектов. */
+function markerDiameter(kind: EntityVisual["kind"]): number {
+  switch (kind) {
+    case "vessel":
+      return 44;
+    case "yard":
+    case "train":
+      return 34;
+    case "truck":
+      return 10;
+    case "tug":
+      return 18;
+    default:
+      return 28;
+  }
+}
+
 export class PortScene {
-  private readonly engine: Engine;
+  private readonly engine: PortEngine;
+  private readonly backend: string;
+  private readonly isWebGPU: boolean;
   private readonly scene: Scene;
   private readonly camera: ArcRotateCamera;
   private readonly homePose: CameraPose;
@@ -79,10 +109,15 @@ export class PortScene {
   private onLabels: ((labels: SceneLabel[]) => void) | null;
   private lastLabelsAt = 0;
   private lastTime = 0;
+  private snapshotApplied = 0;
+  private renderedFrames = 0;
+  private headingTarget = Quaternion.Identity();
+  private headingScratch = Quaternion.Identity();
 
   private constructor(
     canvas: HTMLCanvasElement,
     snapshot: Snapshot,
+    created: CreatedEngine,
     onDiagnostics: (frame: DiagnosticsFrame) => void,
     onLabels?: (labels: SceneLabel[]) => void,
   ) {
@@ -95,12 +130,9 @@ export class PortScene {
         : new URLSearchParams(window.location.search).get("camera");
     this.homePose =
       (presetName ? CAMERA_PRESETS[presetName] : undefined) ?? HOME_CAMERA;
-    this.engine = new Engine(canvas, true, {
-      preserveDrawingBuffer: true,
-      stencil: true,
-      antialias: true,
-      powerPreference: "high-performance",
-    });
+    this.engine = created.engine;
+    this.backend = created.backend;
+    this.isWebGPU = created.isWebGPU;
     this.scene = new Scene(this.engine);
     if (import.meta.env.DEV) {
       (window as unknown as { __smarttwinScene?: Scene }).__smarttwinScene = this.scene;
@@ -109,15 +141,71 @@ export class PortScene {
           __smarttwinDebug?: {
             projectEntity: (id: string, offsetY?: number) => unknown;
             disposeScene: () => { sceneDisposed: boolean };
+            enablePhysics: () => Promise<{ pluginName: string; bodies: number }>;
+            spawnCrate: (x: number, y: number, z: number, size?: number) => Mesh;
+            physicsBodies: () => number;
+            motionProbe: (id?: string) => unknown;
+            setMotionMode: (id: string, mode: "route" | "telemetry") => unknown;
+            injectSample: (
+              id: string,
+              sample: { time: number; x: number; z: number; heading: number },
+            ) => unknown;
+            motionSelfTest: () => unknown;
+            motionTrack: (id: string) => unknown;
+            motionCounters: () => unknown;
+            selectEntity: (id: string | null) => unknown;
+            selectionMarker: () => unknown;
             scene: Scene;
           };
         }
       ).__smarttwinDebug = {
         scene: this.scene,
+        motionProbe: (id?: string) => this.probeMotion(id),
+        setMotionMode: (id: string, mode: "route" | "telemetry") => {
+          this.visuals.get(id)?.motion?.setMode(mode);
+          return this.probeMotion(id);
+        },
+        injectSample: (
+          id: string,
+          sample: { time: number; x: number; z: number; heading: number },
+        ) => {
+          const motion = this.visuals.get(id)?.motion;
+          if (!motion) {
+            return null;
+          }
+          motion.pushSample(sample);
+          return this.probeMotion(id);
+        },
+        motionSelfTest: () => runMotionSelfTest(),
+        motionTrack: (id: string) => this.visuals.get(id)?.motion?.trace() ?? null,
+        motionCounters: () => ({
+          frames: this.renderedFrames,
+          snapshots: this.snapshotApplied,
+        }),
+        selectEntity: (id: string | null) => {
+          store.select(id);
+          return { selectedId: this.selectedId };
+        },
+        selectionMarker: () => ({
+          selectedId: this.selectedId,
+          enabled: this.ring.isEnabled(),
+          x: Number(this.ring.position.x.toFixed(3)),
+          z: Number(this.ring.position.z.toFixed(3)),
+        }),
         disposeScene: () => {
           this.dispose();
           return { sceneDisposed: this.scene.isDisposed };
         },
+        enablePhysics: async () => {
+          await this.setupPhysics();
+          return {
+            pluginName: this.scene.getPhysicsEngine()?.getPhysicsPluginName() ?? "none",
+            bodies: countBodies(this.scene),
+          };
+        },
+        spawnCrate: (x: number, y: number, z: number, size = 2) =>
+          spawnTestCrate(this.scene, new Vector3(x, y, z), size),
+        physicsBodies: () => countBodies(this.scene),
         projectEntity: (id: string, offsetY = 6) => {
           const visual = this.visuals.get(id);
           if (!visual) {
@@ -202,7 +290,11 @@ export class PortScene {
       terminal: this.roots.terminal,
       rail: this.roots.rail,
     });
-    this.water = createWater(this.scene, QUALITY_SCALE.medium.waterSegments);
+    this.water = createWater(
+      this.scene,
+      QUALITY_SCALE.medium.waterSegments,
+      this.isWebGPU,
+    );
     buildWarehouses(
       this.scene,
       this.materials,
@@ -252,15 +344,74 @@ export class PortScene {
       }
     });
     window.addEventListener("resize", this.handleWindowResize);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+
+    // Физика включается только по запросу: Havok тянет 2 МБ WASM, и держать
+    // его в обычном режиме просмотра незачем.
+    const wantsPhysics =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("physics") === "1";
+    if (wantsPhysics) {
+      void this.setupPhysics();
+    }
   }
 
-  static create(
+  /** Состояние движения для отладки и замеров в браузере. */
+  /**
+   * Состояние движения для отладки и замеров в браузере. Только читает
+   * отрендеренную трансформацию: вызов `sample()` здесь сдвигал бы маршрут.
+   */
+  private probeMotion(id?: string): unknown {
+    const dataNow = Date.now() + store.getState().clockOffsetMs;
+    const read = (visual: EntityVisual) => {
+      const motion = visual.motion;
+      if (!motion) {
+        return null;
+      }
+      const rotation = visual.root.rotationQuaternion;
+      const heading = rotation
+        ? rotation.toEulerAngles().y
+        : visual.root.rotation.y;
+      return {
+        id: visual.id,
+        kind: visual.kind,
+        root: {
+          x: Number(visual.root.position.x.toFixed(3)),
+          y: Number(visual.root.position.y.toFixed(3)),
+          z: Number(visual.root.position.z.toFixed(3)),
+          headingDeg: Number(((heading * 180) / Math.PI).toFixed(2)),
+        },
+        stats: motion.stats(dataNow),
+      };
+    };
+    if (id) {
+      const visual = this.visuals.get(id);
+      return visual ? read(visual) : null;
+    }
+    return [...this.visuals.values()].map(read).filter(Boolean);
+  }
+
+  private async setupPhysics(): Promise<void> {
+    const handle = await enablePhysics(this.scene);
+    addGroundCollider(this.scene, 2);
+    console.info(
+      `[physics] ${handle.pluginName}: тел ${countBodies(this.scene)}`,
+    );
+  }
+
+  /**
+   * Создание сцены асинхронное: WebGPU-движок инициализируется через
+   * `initAsync()` (запрос адаптера, компиляция пайплайнов). Для WebGL 2
+   * промис разрешается сразу — вызывающая сторона ожидает его единообразно.
+   */
+  static async create(
     canvas: HTMLCanvasElement,
     snapshot: Snapshot,
     onDiagnostics: (frame: DiagnosticsFrame) => void,
     onLabels?: (labels: SceneLabel[]) => void,
-  ): PortScene {
-    return new PortScene(canvas, snapshot, onDiagnostics, onLabels);
+  ): Promise<PortScene> {
+    const created = await createPortEngine(canvas);
+    return new PortScene(canvas, snapshot, created, onDiagnostics, onLabels);
   }
 
   private createShadowGenerator(
@@ -339,6 +490,7 @@ export class PortScene {
 
   setSnapshot(snapshot: Snapshot): void {
     this.snapshot = snapshot;
+    this.snapshotApplied += 1;
     const entities: PortEntity[] = [
       ...snapshot.vessels,
       ...snapshot.cranes,
@@ -347,6 +499,7 @@ export class PortScene {
       ...snapshot.tugs,
       snapshot.train,
     ];
+    const snapshotTime = Date.parse(snapshot.serverTime);
     for (const entity of entities) {
       let visual = this.visuals.get(entity.id);
       if (!visual) {
@@ -357,10 +510,59 @@ export class PortScene {
         }
       }
       visual?.update(entity, snapshot);
+      if (visual?.dynamic) {
+        // Измерение попадает в буфер движения с меткой времени; положение
+        // визуала из него посчитает цикл отрисовки, а не это сообщение.
+        //
+        // Разности не содержат неизменившихся объектов, поэтому у стоящей
+        // машины своя метка времени замирает. Снимок же подтверждает всё своё
+        // состояние на момент `serverTime` — его и берём как нижнюю границу.
+        const motion = this.ensureMotion(visual, snapshot, entity);
+        const own = this.serverTimeOf(entity.updatedAt);
+        motion.pushSample({
+          time: Number.isFinite(snapshotTime) ? Math.max(own, snapshotTime) : own,
+          x: entity.position.x,
+          z: entity.position.z,
+          heading: (entity.heading * Math.PI) / 180,
+        });
+      }
     }
     if (this.selectedId) {
       this.applySelection();
     }
+  }
+
+  private ensureMotion(
+    visual: EntityVisual,
+    snapshot: Snapshot,
+    entity: PortEntity,
+  ): EntityMotion {
+    if (!visual.motion) {
+      const route =
+        snapshot.mode === "demo" && visual.dynamic
+          ? demoRoute(visual.dynamic.routeKey)
+          : undefined;
+      const motion = new EntityMotion(visual.id, { route });
+      motion.seed(
+        entity.position.x,
+        entity.position.z,
+        (entity.heading * Math.PI) / 180,
+      );
+      visual.motion = motion;
+    }
+    return visual.motion;
+  }
+
+  /**
+   * Метка времени измерения в шкале сервера. Шкала рендера — `Date.now()` плюс
+   * смещение серверных часов, поэтому смещение применяется ровно один раз.
+   */
+  private serverTimeOf(isoTimestamp: string): number {
+    const parsed = Date.parse(isoTimestamp);
+    if (!Number.isFinite(parsed)) {
+      return Date.now() + store.getState().clockOffsetMs;
+    }
+    return parsed;
   }
 
   private buildVisual(entity: PortEntity): EntityVisual | null {
@@ -474,21 +676,20 @@ export class PortScene {
       this.beam.setEnabled(false);
       return;
     }
+    this.placeSelectionMarkers(visual);
+    this.selectedDiameter = markerDiameter(visual.kind);
+  }
+
+  /**
+   * Маркер выбора ставится по отрендеренной позиции и обновляется каждый кадр:
+   * иначе у движущейся машины он отставал бы до следующего сообщения.
+   */
+  private placeSelectionMarkers(visual: EntityVisual): void {
     const position = visual.root.position;
-    const diameter =
-      visual.kind === "vessel"
-        ? 44
-        : visual.kind === "yard" || visual.kind === "train"
-          ? 34
-          : visual.kind === "truck"
-            ? 10
-            : visual.kind === "tug"
-              ? 18
-              : 28;
+    const diameter = markerDiameter(visual.kind);
     const y = position.y + visual.markerY;
     this.ring.setEnabled(true);
     this.ring.position.set(position.x, y, position.z);
-    this.selectedDiameter = diameter;
     this.ring.scaling.set(diameter, 1, diameter);
     this.beam.setEnabled(true);
     this.beam.position.set(position.x, y + 11, position.z);
@@ -550,34 +751,32 @@ export class PortScene {
     const deltaSeconds = this.lastTime === 0 ? 0.016 : Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
     const timeSeconds = now / 1000;
+    this.renderedFrames += 1;
 
     const cameraPosition = this.camera.globalPosition;
     this.water.update(timeSeconds, cameraPosition);
 
+    // Время данных: шкала сервера, приведённая к локальным часам. Движение
+    // считается здесь, в цикле отрисовки, и не зависит от прихода сообщений.
+    const dataNow = Date.now() + store.getState().clockOffsetMs;
     for (const visual of this.visuals.values()) {
-      if (visual.dynamic) {
+      if (visual.dynamic && visual.motion) {
+        const pose = visual.motion.sample(dataNow);
         const root = visual.root;
-        const target = visual.dynamic.target;
-        const dx = target.x - root.position.x;
-        const dz = target.z - root.position.z;
-        const distance = Math.hypot(dx, dz);
-        if (distance > visual.dynamic.snapDistance) {
-          root.position.set(target.x, target.y, target.z);
-        } else {
-          const amount = 1 - Math.exp(-deltaSeconds * 3.2);
-          root.position.set(
-            root.position.x + dx * amount,
-            root.position.y + (target.y - root.position.y) * amount,
-            root.position.z + dz * amount,
-          );
-        }
-        const targetRotation = (visual.dynamic.targetHeading * Math.PI) / 180;
-        let rotationDelta = targetRotation - root.rotation.y;
-        while (rotationDelta > Math.PI) rotationDelta -= Math.PI * 2;
-        while (rotationDelta < -Math.PI) rotationDelta += Math.PI * 2;
-        root.rotation.y += rotationDelta * Math.min(1, deltaSeconds * 3);
+        root.position.x = pose.x;
+        root.position.z = pose.z;
+        root.position.y = visual.dynamic.baseY;
+        this.applyHeading(root, pose.heading, deltaSeconds);
       }
       visual.tick?.(timeSeconds, deltaSeconds);
+    }
+
+    // Маркер выбора идёт за отрендеренной позицией, а не за данными.
+    if (this.selectedId) {
+      const selected = this.visuals.get(this.selectedId);
+      if (selected) {
+        this.placeSelectionMarkers(selected);
+      }
     }
 
     this.animateCamera(deltaSeconds);
@@ -629,6 +828,57 @@ export class PortScene {
       }
     }
   }
+
+  /**
+   * Ориентация — через кватернионы: на разворотах курс доводится сликом,
+   * без мгновенных перескоков и без «догоняющей» анимации по каждому
+   * сообщению. Скорость доводки ограничена, поэтому поворот читается как
+   * поворот, а не как рывок.
+   */
+  private applyHeading(
+    root: TransformNode,
+    heading: number,
+    deltaSeconds: number,
+  ): void {
+    Quaternion.FromEulerAnglesToRef(0, heading, 0, this.headingTarget);
+    if (!root.rotationQuaternion) {
+      root.rotationQuaternion = this.headingTarget.clone();
+      return;
+    }
+    const amount = 1 - Math.exp(-deltaSeconds * 6);
+    Quaternion.SlerpToRef(
+      root.rotationQuaternion,
+      this.headingTarget,
+      amount,
+      this.headingScratch,
+    );
+    root.rotationQuaternion.copyFrom(this.headingScratch);
+  }
+
+  /**
+   * Возврат во вкладку: накопленный разрыв не проигрываем — показываем
+   * известное положение и ждём первое свежее измерение.
+   */
+  private handleVisibilityChange = (): void => {
+    if (document.hidden) {
+      return;
+    }
+    const dataNow = Date.now() + store.getState().clockOffsetMs;
+    for (const visual of this.visuals.values()) {
+      if (!visual.motion) {
+        continue;
+      }
+      visual.motion.resync(dataNow, {
+        x: visual.root.position.x,
+        z: visual.root.position.z,
+        heading: visual.root.rotationQuaternion
+          ? visual.root.rotationQuaternion.toEulerAngles().y
+          : visual.root.rotation.y,
+      });
+    }
+    // Большой скачок времени в onFrame дал бы рывок мира.
+    this.lastTime = 0;
+  };
 
   private clampCameraTarget(): void {
     this.camera.target.x = Math.min(270, Math.max(-270, this.camera.target.x));
@@ -717,7 +967,7 @@ export class PortScene {
       activeMeshes: this.scene.getActiveMeshes().length,
       totalVertices: this.scene.getTotalVertices(),
       resolution,
-      backend: this.engine.webGLVersion >= 2 ? "WebGL 2" : "WebGL 1",
+      backend: this.backend,
     });
   }
 
@@ -732,6 +982,7 @@ export class PortScene {
     this.disposed = true;
     this.resizeObserver.disconnect();
     window.removeEventListener("resize", this.handleWindowResize);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     if (this.pointerObserver) {
       this.scene.onPointerObservable.remove(this.pointerObserver);
       this.pointerObserver = null;
@@ -753,3 +1004,4 @@ export class PortScene {
     this.resetAnimation = false;
   };
 }
+

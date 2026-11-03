@@ -77,6 +77,8 @@ function initialState(): AppState {
 class AppStore {
   private state: AppState = initialState();
   private listeners = new Set<() => void>();
+  /** Сколько разностей уже пришло: первая выставляет часы точно. */
+  private clockSamples = 0;
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -98,16 +100,38 @@ class AppStore {
   }
 
   applySnapshot(snapshot: Snapshot): void {
-    const clockOffsetMs = Date.parse(snapshot.serverTime) - Date.now();
     this.set({
       liveSnapshot: acceptSnapshot(this.state.liveSnapshot, snapshot),
-      clockOffsetMs,
+      clockOffsetMs: Date.parse(snapshot.serverTime) - Date.now(),
     });
+  }
+
+  /**
+   * Смещение часов сервера обновляем и по разностям: иначе оно остаётся
+   * снимком момента подключения и уезжает от реального. Сглаживаем, чтобы
+   * дрожание доставки не превращалось в дрожание шкалы времени.
+   */
+  private syncClock(serverTime: string | undefined): void {
+    if (!serverTime) {
+      return;
+    }
+    const measured = Date.parse(serverTime) - Date.now();
+    if (!Number.isFinite(measured)) {
+      return;
+    }
+    const current = this.state.clockOffsetMs;
+    this.clockSamples += 1;
+    const next =
+      this.clockSamples <= 2 || Math.abs(measured - current) > 5_000
+        ? measured
+        : current + (measured - current) * 0.2;
+    this.set({ clockOffsetMs: next });
   }
 
   applyDelta(delta: StateDelta): void {
     const merged = applyDelta(this.state.liveSnapshot, delta);
     this.set({ liveSnapshot: merged });
+    this.syncClock(delta.serverTime);
   }
 
   setConnection(connection: ConnectionState): void {

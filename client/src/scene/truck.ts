@@ -1,4 +1,4 @@
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
@@ -82,9 +82,11 @@ export function buildTruck(
   tagEntity(truckRoot, truck.id);
   castShadows(shadow, truckRoot);
 
-  const target = new Vector3(truck.position.x, 2, truck.position.z);
-  let targetHeading = truck.heading;
-  truckRoot.rotation.y = (truck.heading * Math.PI) / 180;
+  truckRoot.rotationQuaternion = Quaternion.FromEulerAngles(
+    0,
+    (truck.heading * Math.PI) / 180,
+    0,
+  );
 
   // После подмены GLB-моделью параметрика удаляется, но терминальный тягач
   // работает с прицепом-шасси и контейнером: достраиваем их за кабиной,
@@ -100,11 +102,10 @@ export function buildTruck(
     selectionMeshes: [cab, trailer, container],
     markerY: 5,
     focusRadius: 95,
-    dynamic: { target, targetHeading, snapDistance: 90 },
+    // Положение и курс считает EntityMotion по маршруту причального проезда.
+    dynamic: { routeKey: "truck-loop", baseY: 2 },
     update: (entity) => {
       const current = entity as Truck;
-      target.set(current.position.x, 2, current.position.z);
-      targetHeading = current.heading;
       if (swapState.active) {
         if (swappedContainer) {
           swappedContainer.isVisible = current.loaded;

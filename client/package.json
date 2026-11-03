@@ -11,11 +11,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:e2e": "node scripts/verify.mjs",
+    "verify:motion": "node scripts/motion-check.mjs",
     "smoke:signalr": "node scripts/signalr-smoke.mjs",
     "screenshots": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "8.56.2",
+    "@babylonjs/havok": "1.3.14",
     "@babylonjs/loaders": "8.56.2",
     "@microsoft/signalr": "9.0.19",
     "react": "19.3.1",
