@@ -24,6 +24,10 @@ export function buildTruck(
   truckRoot.position.set(truck.position.x, 2, truck.position.z);
 
   const cabMaterial = materials.truckCab[index] ?? materials.white;
+  // Всё, что нарисовано параметрически, попадает в `meshes`: при подмене на
+  // GLB эти меши удаляются. Иначе окно, колёса и маячок остаются висеть
+  // впереди модели — со стороны это выглядит как отдельная тележка.
+  const parametric: Mesh[] = [];
   const cab = box(
     scene,
     "truck-cab",
@@ -31,12 +35,15 @@ export function buildTruck(
     cabMaterial,
     truckRoot,
   );
-  box(
-    scene,
-    "truck-cab-window",
-    { width: 1.4, height: 1.2, depth: 2.55, x: 7.4, y: 2.7 },
-    materials.glass,
-    truckRoot,
+  parametric.push(cab);
+  parametric.push(
+    box(
+      scene,
+      "truck-cab-window",
+      { width: 1.4, height: 1.2, depth: 2.55, x: 7.4, y: 2.7 },
+      materials.glass,
+      truckRoot,
+    ),
   );
   const trailer = box(
     scene,
@@ -45,6 +52,7 @@ export function buildTruck(
     materials.truckTrailer,
     truckRoot,
   );
+  parametric.push(trailer);
   const container = box(
     scene,
     "truck-container",
@@ -53,17 +61,20 @@ export function buildTruck(
     truckRoot,
   );
   container.isVisible = truck.loaded;
+  parametric.push(container);
 
   for (const wheelX of [5.6, 0.6, -4.9]) {
     for (const wheelZ of [-1.15, 1.15]) {
-      cylinder(
-        scene,
-        "truck-wheel",
-        1.15,
-        0.35,
-        { x: wheelX, y: 0.58, z: wheelZ, rx: Math.PI / 2, tessellation: 12 },
-        materials.funnel,
-        truckRoot,
+      parametric.push(
+        cylinder(
+          scene,
+          "truck-wheel",
+          1.15,
+          0.35,
+          { x: wheelX, y: 0.58, z: wheelZ, rx: Math.PI / 2, tessellation: 12 },
+          materials.funnel,
+          truckRoot,
+        ),
       );
     }
   }
@@ -77,6 +88,7 @@ export function buildTruck(
     truckRoot,
   );
   beacon.metadata = { skipShadow: true };
+  parametric.push(beacon);
   void beaconMaterial;
 
   tagEntity(truckRoot, truck.id);
@@ -98,7 +110,7 @@ export function buildTruck(
     id: truck.id,
     kind: "truck",
     root: truckRoot,
-    meshes: [cab, trailer, container],
+    meshes: parametric,
     selectionMeshes: [cab, trailer, container],
     markerY: 5,
     focusRadius: 95,
