@@ -85,6 +85,9 @@ export function buildTruck(
   let targetHeading = truck.heading;
   truckRoot.rotation.y = (truck.heading * Math.PI) / 180;
 
+  // После подмены GLB-моделью контейнер-параметрика удалён.
+  const swapState = { active: false };
+
   return {
     id: truck.id,
     kind: "truck",
@@ -98,7 +101,12 @@ export function buildTruck(
       const current = entity as Truck;
       target.set(current.position.x, 2, current.position.z);
       targetHeading = current.heading;
-      container.isVisible = current.loaded;
+      if (!swapState.active) {
+        container.isVisible = current.loaded;
+      }
+    },
+    onModelSwap: () => {
+      swapState.active = true;
     },
   };
 }

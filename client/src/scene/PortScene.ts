@@ -1,5 +1,6 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -19,7 +20,8 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import "@babylonjs/core/Rendering/outlineRenderer";
 import "@babylonjs/core/Culling/ray";
 
-import { HOME_CAMERA, QUALITY_SCALE } from "../domain/constants";
+import { CAMERA_FOV, CAMERA_PRESETS, HOME_CAMERA, QUALITY_SCALE } from "../domain/constants";
+import type { CameraPose } from "../domain/constants";
 import type {
   DiagnosticsFrame,
   LayerKey,
@@ -28,9 +30,13 @@ import type {
   Snapshot,
 } from "../domain/types";
 import { store } from "../state/store";
+import { computeProgress } from "../metrics/progress";
+import type { SceneLabel } from "./labels";
 import { createMaterials, type PortMaterials } from "./materials";
 import { buildTerminal, createTerminalRoots } from "./terminal";
 import { createWater, type WaterView } from "./water";
+import { swapInModel } from "./models";
+import { MODEL_MANIFEST } from "./models";
 import { buildYard } from "./yard";
 import { buildVessel } from "./vessel";
 import { buildCrane } from "./crane";
@@ -38,6 +44,7 @@ import { buildTruck } from "./truck";
 import { buildTug } from "./tug";
 import { buildTrain } from "./train";
 import { buildWarehouses } from "./warehouses";
+import { buildBackground } from "./background";
 import type { EntityVisual } from "./entityVisual";
 
 const OUTLINE_COLOR = "#3fd3ff";
@@ -46,6 +53,7 @@ export class PortScene {
   private readonly engine: Engine;
   private readonly scene: Scene;
   private readonly camera: ArcRotateCamera;
+  private readonly homePose: CameraPose;
   private readonly materials: PortMaterials;
   private readonly roots: ReturnType<typeof createTerminalRoots>;
   private readonly visuals = new Map<string, EntityVisual>();
@@ -68,14 +76,25 @@ export class PortScene {
   private resetAnimation = false;
   private disposed = false;
   private onDiagnostics: (frame: DiagnosticsFrame) => void;
+  private onLabels: ((labels: SceneLabel[]) => void) | null;
+  private lastLabelsAt = 0;
   private lastTime = 0;
 
   private constructor(
     canvas: HTMLCanvasElement,
     snapshot: Snapshot,
     onDiagnostics: (frame: DiagnosticsFrame) => void,
+    onLabels?: (labels: SceneLabel[]) => void,
   ) {
     this.onDiagnostics = onDiagnostics;
+    this.onLabels = onLabels ?? null;
+    // Ракурс для сравнений: ?camera=legacy возвращает исходную композицию.
+    const presetName =
+      typeof window === "undefined"
+        ? null
+        : new URLSearchParams(window.location.search).get("camera");
+    this.homePose =
+      (presetName ? CAMERA_PRESETS[presetName] : undefined) ?? HOME_CAMERA;
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: true,
       stencil: true,
@@ -122,21 +141,29 @@ export class PortScene {
         },
       };
     }
-    this.scene.clearColor = Color3.FromHexString("#b9cedb").toColor4(1);
+    // Тёплый дневной тон в духе референса: ACES-тонмаппинг сглаживает
+    // пересветы и добавляет мягкий «плёночный» контраст.
+    this.scene.imageProcessingConfiguration.toneMappingEnabled = true;
+    this.scene.imageProcessingConfiguration.toneMappingType =
+      ImageProcessingConfiguration.TONEMAPPING_ACES;
+    this.scene.imageProcessingConfiguration.exposure = 1.15;
+    this.scene.imageProcessingConfiguration.contrast = 1.22;
+    this.scene.clearColor = Color3.FromHexString("#c2ddea").toColor4(1);
     this.scene.fogMode = Scene.FOGMODE_EXP2;
-    this.scene.fogColor = Color3.FromHexString("#c9d9e2");
+    this.scene.fogColor = Color3.FromHexString("#d7e4e9");
     this.scene.fogDensity = 0.00085;
     this.scene.skipPointerMovePicking = true;
     this.instrumentation = new SceneInstrumentation(this.scene);
 
     this.camera = new ArcRotateCamera(
       "camera",
-      HOME_CAMERA.alpha,
-      HOME_CAMERA.beta,
-      HOME_CAMERA.radius,
-      new Vector3(HOME_CAMERA.target.x, HOME_CAMERA.target.y, HOME_CAMERA.target.z),
+      this.homePose.alpha,
+      this.homePose.beta,
+      this.homePose.radius,
+      new Vector3(this.homePose.target.x, this.homePose.target.y, this.homePose.target.z),
       this.scene,
     );
+    this.camera.fov = CAMERA_FOV;
     this.camera.attachControl(canvas, true);
     this.camera.lowerRadiusLimit = 80;
     this.camera.upperRadiusLimit = 780;
@@ -153,18 +180,20 @@ export class PortScene {
       new Vector3(0.25, 1, 0.15),
       this.scene,
     );
-    hemi.intensity = 0.82;
-    hemi.diffuse = Color3.FromHexString("#eef6fb");
-    hemi.groundColor = Color3.FromHexString("#5c686f");
+    // Тёплый свет сверху, прохладная «земля» от воды и бетона — так
+    // формируется дневной баланс референса.
+    hemi.intensity = 0.72;
+    hemi.diffuse = Color3.FromHexString("#fff4e2");
+    hemi.groundColor = Color3.FromHexString("#6d8492");
 
     const sun = new DirectionalLight(
       "sun",
-      new Vector3(-0.42, -1, 0.32),
+      new Vector3(-0.52, -0.82, 0.34),
       this.scene,
     );
-    sun.intensity = 1.55;
-    sun.diffuse = Color3.FromHexString("#fff2dd");
-    sun.position.set(210, 330, -230);
+    sun.intensity = 2.1;
+    sun.diffuse = Color3.FromHexString("#ffe7bd");
+    sun.position.set(280, 420, -260);
     this.shadow = this.createShadowGenerator(sun, "medium");
 
     this.materials = createMaterials(this.scene);
@@ -180,6 +209,7 @@ export class PortScene {
       this.roots.warehouses,
       this.shadow,
     );
+    buildBackground(this.scene, this.materials, this.roots.terminal);
 
     const ringMaterial = this.materials.marker;
     this.ring = MeshBuilder.CreateTorus(
@@ -215,6 +245,7 @@ export class PortScene {
 
     this.scene.onBeforeRenderObservable.add(() => this.onFrame());
     this.scene.onAfterRenderObservable.add(() => this.collectDiagnostics());
+    this.scene.onAfterRenderObservable.add(() => this.collectLabels());
     this.engine.runRenderLoop(() => {
       if (!this.disposed) {
         this.scene.render();
@@ -227,8 +258,9 @@ export class PortScene {
     canvas: HTMLCanvasElement,
     snapshot: Snapshot,
     onDiagnostics: (frame: DiagnosticsFrame) => void,
+    onLabels?: (labels: SceneLabel[]) => void,
   ): PortScene {
-    return new PortScene(canvas, snapshot, onDiagnostics);
+    return new PortScene(canvas, snapshot, onDiagnostics, onLabels);
   }
 
   private createShadowGenerator(
@@ -332,6 +364,14 @@ export class PortScene {
   }
 
   private buildVisual(entity: PortEntity): EntityVisual | null {
+    const visual = this.buildParametricVisual(entity);
+    if (visual && MODEL_MANIFEST[entity.kind]) {
+      this.swapModelAsync(visual, entity.kind);
+    }
+    return visual;
+  }
+
+  private buildParametricVisual(entity: PortEntity): EntityVisual | null {
     switch (entity.kind) {
       case "vessel":
         return buildVessel(
@@ -384,6 +424,31 @@ export class PortScene {
       default:
         return null;
     }
+  }
+
+  /**
+   * Ленивая подмена параметрической геометрии внешней GLB-моделью.
+   * Параметрика работает, пока модель грузится или если загрузка не удалась.
+   */
+  private swapModelAsync(visual: EntityVisual, modelKey: string): void {
+    void swapInModel(
+      this.scene,
+      visual.root,
+      modelKey,
+      visual.id,
+      this.shadow,
+    ).then((result) => {
+      if (!result || visual.root.isDisposed()) {
+        return;
+      }
+      for (const mesh of visual.meshes) {
+        this.shadow.removeShadowCaster(mesh, false);
+        mesh.dispose();
+      }
+      visual.meshes = result.meshes;
+      visual.selectionMeshes = result.meshes;
+      visual.onModelSwap?.();
+    });
   }
 
   private applySelection(): void {
@@ -534,15 +599,16 @@ export class PortScene {
   private animateCamera(deltaSeconds: number): void {
     const amount = 1 - Math.exp(-deltaSeconds * 3.5);
     if (this.resetAnimation) {
-      this.camera.alpha += (HOME_CAMERA.alpha - this.camera.alpha) * amount;
-      this.camera.beta += (HOME_CAMERA.beta - this.camera.beta) * amount;
-      this.camera.radius += (HOME_CAMERA.radius - this.camera.radius) * amount;
-      this.camera.target.x += (HOME_CAMERA.target.x - this.camera.target.x) * amount;
-      this.camera.target.y += (HOME_CAMERA.target.y - this.camera.target.y) * amount;
-      this.camera.target.z += (HOME_CAMERA.target.z - this.camera.target.z) * amount;
+      const home = this.homePose;
+      this.camera.alpha += (home.alpha - this.camera.alpha) * amount;
+      this.camera.beta += (home.beta - this.camera.beta) * amount;
+      this.camera.radius += (home.radius - this.camera.radius) * amount;
+      this.camera.target.x += (home.target.x - this.camera.target.x) * amount;
+      this.camera.target.y += (home.target.y - this.camera.target.y) * amount;
+      this.camera.target.z += (home.target.z - this.camera.target.z) * amount;
       if (
-        Math.abs(this.camera.alpha - HOME_CAMERA.alpha) < 0.002 &&
-        Math.abs(this.camera.radius - HOME_CAMERA.radius) < 0.6
+        Math.abs(this.camera.alpha - home.alpha) < 0.002 &&
+        Math.abs(this.camera.radius - home.radius) < 0.6
       ) {
         this.resetAnimation = false;
       }
@@ -567,6 +633,74 @@ export class PortScene {
     this.camera.target.x = Math.min(270, Math.max(-270, this.camera.target.x));
     this.camera.target.z = Math.min(340, Math.max(-140, this.camera.target.z));
     this.camera.target.y = Math.min(50, Math.max(0, this.camera.target.y));
+  }
+
+  /**
+   * Экранные подписи: мировая точка визуала проецируется в CSS-пиксели
+   * канваса. Подписи за камерой и за границами кадра не отдаются.
+   */
+  private collectLabels(): void {
+    if (!this.onLabels) {
+      return;
+    }
+    const now = performance.now();
+    if (now - this.lastLabelsAt < 90) {
+      return;
+    }
+    this.lastLabelsAt = now;
+    const canvas = this.engine.getRenderingCanvas();
+    if (!canvas) {
+      return;
+    }
+    const width = canvas.clientWidth || this.engine.getRenderWidth();
+    const height = canvas.clientHeight || this.engine.getRenderHeight();
+    const viewport = this.camera.viewport.toGlobal(width, height);
+    const transform = this.scene.getTransformMatrix();
+    const labels: SceneLabel[] = [];
+    for (const vessel of this.snapshot?.vessels ?? []) {
+      const visual = this.visuals.get(vessel.id);
+      if (!visual) {
+        continue;
+      }
+      const point = Vector3.Project(
+        new Vector3(
+          visual.root.position.x,
+          visual.root.position.y + 46,
+          visual.root.position.z,
+        ),
+        Matrix.IdentityReadOnly,
+        transform,
+        viewport,
+      );
+      const progress = Math.round(
+        computeProgress(vessel.completedTeu, vessel.plannedTeu),
+      );
+      // Подпись центрируется над объектом, поэтому её позиция прижимается к
+      // кадру: иначе у края экрана карточка обрезается.
+      const clamp = (value: number, min: number, max: number) =>
+        Math.min(max, Math.max(min, value));
+      labels.push({
+        id: vessel.id,
+        title: vessel.name,
+        subtitle: `${vessel.operation === "loading" ? "погрузка" : "выгрузка"} · ${progress}% · причал ${vessel.berth}`,
+        tone:
+          vessel.status === "critical"
+            ? "critical"
+            : vessel.status === "warning"
+              ? "warning"
+              : "info",
+        x: clamp(point.x, 96, width - 96),
+        y: clamp(point.y, 110, height - 170),
+        visible:
+          point.z > 0 &&
+          point.z < 1 &&
+          point.x > 20 &&
+          point.x < width - 20 &&
+          point.y > 96 &&
+          point.y < height - 150,
+      });
+    }
+    this.onLabels(labels);
   }
 
   private collectDiagnostics(): void {

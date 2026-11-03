@@ -135,10 +135,10 @@ export function createSkyTexture(scene: Scene): DynamicTexture {
   );
   const context = texture.getContext() as CanvasRenderingContext2D;
   const gradient = context.createLinearGradient(0, 0, 0, 512);
-  gradient.addColorStop(0, "#7a9db5");
-  gradient.addColorStop(0.42, "#a9c4d3");
-  gradient.addColorStop(0.72, "#d6e3e9");
-  gradient.addColorStop(1, "#e9eff1");
+  gradient.addColorStop(0, "#6fa8cf");
+  gradient.addColorStop(0.4, "#a5c8dd");
+  gradient.addColorStop(0.72, "#d3e5ec");
+  gradient.addColorStop(1, "#eef4f4");
   context.fillStyle = gradient;
   context.fillRect(0, 0, 1024, 512);
   texture.update(false);

@@ -40,6 +40,27 @@ export function TrainIcon(props: IconProps) {
   );
 }
 
+export function CraneIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M5 21V7h14v14" />
+      <path d="M3 7h18" />
+      <path d="M12 7v5" />
+      <rect x="10" y="12" width="4" height="2.6" rx="0.6" />
+      <path d="M6.5 21v-3M17.5 21v-3" />
+    </svg>
+  );
+}
+
+export function ContainerIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect x="3" y="7" width="18" height="11" rx="1.5" />
+      <path d="M7 7v11M11 7v11M15 7v11" />
+    </svg>
+  );
+}
+
 export function TruckIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

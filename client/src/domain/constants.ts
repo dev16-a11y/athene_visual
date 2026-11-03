@@ -8,12 +8,39 @@ export const STALE_AFTER_MS = 7_000;
 export const OFFLINE_AFTER_MS = 20_000;
 export const TICK_MS = 2_000;
 
-export const HOME_CAMERA = {
+export interface CameraPose {
+  alpha: number;
+  beta: number;
+  radius: number;
+  target: { x: number; y: number; z: number };
+}
+
+/**
+ * Рабочий ракурс презентационного вида: камера над акваторией, причал идёт
+ * диагональю, судно и краны занимают центр кадра, вода — передний план.
+ * Угол обзора 0.7 рад (~40°) без широкоугольных искажений по краям.
+ */
+export const HOME_CAMERA: CameraPose = {
+  alpha: -1.04,
+  beta: 1.13,
+  radius: 250,
+  target: { x: -24, y: 20, z: 8 },
+};
+
+/** Исходный ракурс до визуальной итерации — для сравнения «до/после». */
+export const HOME_CAMERA_LEGACY: CameraPose = {
   alpha: -1.62,
   beta: 0.93,
   radius: 380,
   target: { x: 0, y: 6, z: 50 },
 };
+
+export const CAMERA_PRESETS: Record<string, CameraPose> = {
+  hero: HOME_CAMERA,
+  legacy: HOME_CAMERA_LEGACY,
+};
+
+export const CAMERA_FOV = 0.7;
 
 export const LAYER_LABELS: Record<LayerKey, string> = {
   vessels: "Суда",

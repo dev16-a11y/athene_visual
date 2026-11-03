@@ -5,6 +5,7 @@ import { ServerDataSource } from "./data/serverSource";
 import type { PortDataSource } from "./data/types";
 import { formatAge, getDataAgeMs, getFreshness } from "./metrics/freshness";
 import type { PortScene } from "./scene/PortScene";
+import type { SceneLabel } from "./scene/labels";
 import { store, useAppState } from "./state/store";
 import { BottomDock } from "./ui/BottomDock";
 import { DiagnosticsPanel } from "./ui/DiagnosticsPanel";
@@ -12,6 +13,7 @@ import { HistoryBar } from "./ui/HistoryBar";
 import { LeftRail } from "./ui/LeftRail";
 import { RightRail } from "./ui/RightRail";
 import { TopBar } from "./ui/TopBar";
+import { SceneLabels } from "./ui/SceneLabels";
 import { AlertIcon, LogoMark } from "./ui/icons";
 
 function createHandlers(
@@ -33,6 +35,7 @@ function createHandlers(
 export default function App() {
   const state = useAppState();
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [sceneLabels, setSceneLabels] = useState<SceneLabel[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<PortScene | null>(null);
   const sourceRef = useRef<PortDataSource | null>(null);
@@ -124,6 +127,7 @@ export default function App() {
         canvasRef.current,
         snapshot,
         (frame) => store.set({ diagnostics: frame }),
+        (next) => setSceneLabels(next),
       );
     });
     return () => {
@@ -233,6 +237,9 @@ export default function App() {
         aria-label="Трёхмерная сцена контейнерного терминала"
       />
       <div className="scene-vignette" aria-hidden="true" />
+      {displaySnapshot && (
+        <SceneLabels labels={sceneLabels} selectedId={state.selectedId} />
+      )}
 
       {!displaySnapshot && (
         <div className="loading-screen">
@@ -282,7 +289,8 @@ export default function App() {
           />
         )}
 
-        {state.showDiagnostics && (
+        {/* Диагностика — только в dev-сборке, в презентационном виде её нет. */}
+        {import.meta.env.DEV && state.showDiagnostics && (
           <DiagnosticsPanel
             frame={state.diagnostics}
             connection={state.connection}

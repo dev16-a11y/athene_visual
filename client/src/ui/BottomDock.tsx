@@ -1,9 +1,16 @@
+import type { ReactNode } from "react";
 import type { Snapshot } from "../domain/types";
 import { computePercent, formatPercent } from "../metrics/progress";
+import { formatNumber, formatShortTime } from "../utils/format";
 import {
-  formatNumber,
-  formatShortTime,
-} from "../utils/format";
+  ContainerIcon,
+  CraneIcon,
+  GaugeIcon,
+  ShipIcon,
+  TargetIcon,
+  TrainIcon,
+  TruckIcon,
+} from "./icons";
 
 interface BottomDockProps {
   snapshot: Snapshot;
@@ -11,24 +18,71 @@ interface BottomDockProps {
   dataSourceMode: "server" | "demo" | null;
 }
 
-interface MetricProps {
+function Ring({
+  percent,
+  label,
+  detail,
+  hint,
+  accent,
+}: {
+  percent: number;
   label: string;
-  value: string;
-  unit: string;
   detail: string;
   hint: string;
-  tone?: "ok" | "warn" | "danger";
+  accent: "cyan" | "green";
+}) {
+  const radius = 26;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const filled = (circumference * clamped) / 100;
+  return (
+    <div
+      className="dock-ring"
+      tabIndex={0}
+      data-tip={hint}
+      aria-label={hint}
+      role="img"
+    >
+      <div className="ring-chart" data-accent={accent}>
+        <svg width="64" height="64" viewBox="0 0 64 64">
+          <circle className="ring-track" cx="32" cy="32" r={radius} />
+          <circle
+            className="ring-value"
+            cx="32"
+            cy="32"
+            r={radius}
+            strokeDasharray={`${filled} ${circumference - filled}`}
+          />
+        </svg>
+        <span className="ring-percent">{Math.round(clamped)}%</span>
+      </div>
+      <span className="dock-ring-label">{label}</span>
+      <span className="dock-ring-detail">{detail}</span>
+    </div>
+  );
 }
 
-function Metric({ label, value, unit, detail, hint, tone }: MetricProps) {
+function ResourceChip({
+  icon,
+  value,
+  label,
+  hint,
+}: {
+  icon: ReactNode;
+  value: string;
+  label: string;
+  hint: string;
+}) {
   return (
-    <div className="metric" tabIndex={0} data-tip={hint} aria-label={hint}>
-      <span className="metric-label">{label}</span>
-      <span className={`metric-value${tone ? ` tone-${tone}` : ""}`}>
-        {value}
-        <span className="metric-unit">{unit}</span>
-      </span>
-      <span className="metric-detail">{detail}</span>
+    <div
+      className="dock-res"
+      tabIndex={0}
+      data-tip={hint}
+      aria-label={hint}
+    >
+      <span className="dock-res-icon">{icon}</span>
+      <span className="dock-res-value">{value}</span>
+      <span className="dock-res-label">{label}</span>
     </div>
   );
 }
@@ -60,47 +114,82 @@ export function BottomDock({
       </div>
 
       <div className="dock-center glass">
-        <div className="dock-metrics">
-          <Metric
-            label="Обработано"
-            value={formatNumber(kpis.teuHandled)}
-            unit="TEU"
-            detail={periodLabel}
-            hint={`Суммарный объём грузовых операций за выбранный период (${period}). Показатель относится к периоду, а не к моменту времени.`}
-          />
-          <Metric
+        <div className="dock-grid">
+          <div
+            className="dock-chip"
+            tabIndex={0}
+            data-tip={`Суммарный объём грузовых операций за выбранный период (${period}). Показатель относится к периоду, а не к моменту времени.`}
+            aria-label="Обработанный объём"
+          >
+            <span className="dock-chip-icon">
+              <ContainerIcon size={26} />
+            </span>
+            <span className="dock-chip-main">
+              <span className="dock-chip-value">
+                {formatNumber(kpis.teuHandled)}
+                <span className="dock-chip-unit">TEU</span>
+              </span>
+              <span className="dock-chip-sub">
+                план {formatNumber(kpis.planTeu)} TEU · {periodLabel}
+              </span>
+            </span>
+          </div>
+
+          <span className="dock-divider" aria-hidden="true" />
+
+          <Ring
+            percent={planPercent}
             label="Выполнение плана"
-            value={formatPercent(planPercent, 1)}
-            unit=""
-            detail={`план ${formatNumber(kpis.planTeu)} TEU`}
-            hint="Отношение обработанного объёма к плановому объёму за период. Рассчитывается как TEU факт / TEU план."
-            tone={planPercent >= 80 ? "ok" : "warn"}
+            detail={formatPercent(planPercent, 1)}
+            hint={`Отношение обработанного объёма к плановому объёму за период. Рассчитывается как TEU факт / TEU план (${period}).`}
+            accent="cyan"
           />
-          <Metric
-            label="Доступность оборудования"
-            value={formatPercent(availability, 1)}
-            unit=""
-            detail={`${kpis.availableEquipment} из ${kpis.totalEquipment} ед.`}
+          <Ring
+            percent={availability}
+            label="Доступность"
+            detail={`${kpis.availableEquipment}/${kpis.totalEquipment} ед.`}
             hint="Доля доступного оборудования от общего парка на выбранный момент. Краны на обслуживании учитываются как недоступные."
-            tone={availability >= 90 ? "ok" : "warn"}
+            accent="green"
           />
-          <Metric
-            label="Задействованные ресурсы"
-            value={`${kpis.cranesInWork} · ${kpis.trucksActive} · ${kpis.railWagonsActive}`}
-            unit=""
-            detail="краны · авто · вагоны"
-            hint="Активные ресурсы на выбранный момент: причальные краны, автотранспорт, железнодорожные вагоны. Не относится к периоду."
+
+          <span className="dock-divider" aria-hidden="true" />
+
+          <ResourceChip
+            icon={<ShipIcon size={22} />}
+            value={`${snapshot.vessels.length}`}
+            label="суда"
+            hint="Число судов в акватории терминала на выбранный момент."
+          />
+          <ResourceChip
+            icon={<CraneIcon size={22} />}
+            value={`${kpis.cranesInWork}`}
+            label="краны"
+            hint="Причальные краны в работе на выбранный момент."
+          />
+          <ResourceChip
+            icon={<TruckIcon size={22} />}
+            value={`${kpis.trucksActive}`}
+            label="авто"
+            hint="Активный автотранспорт на выбранный момент."
+          />
+          <ResourceChip
+            icon={<TrainIcon size={22} />}
+            value={`${kpis.railWagonsActive}`}
+            label="вагоны"
+            hint="Задействованные железнодорожные вагоны на выбранный момент."
           />
         </div>
       </div>
 
       <div className="dock-side glass dock-side-right">
-        <div className="dock-side-title">Период и источник</div>
+        <div className="dock-side-title">
+          <GaugeIcon size={11} /> Период и источник
+        </div>
         <div className="dock-side-value">
           {dataSourceMode === "server" ? "SignalR · сервер" : "Локальный поток"}
         </div>
         <div className="dock-side-note">
-          TEU — 20-футовый эквивалент · демо {snapshot.sequence}
+          <TargetIcon size={11} /> TEU — 20-футовый эквивалент · демо {snapshot.sequence}
         </div>
       </div>
     </footer>

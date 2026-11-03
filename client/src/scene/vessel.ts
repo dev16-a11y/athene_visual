@@ -9,11 +9,9 @@ import type { PortMaterials } from "./materials";
 import {
   box,
   castShadows,
-  createLabelPlane,
   cylinder,
   tagEntity,
 } from "./helpers";
-import { drawLabel } from "./textures";
 import { mergeBoxes, type BoxInstance } from "./mergedBoxes";
 import type { EntityVisual } from "./entityVisual";
 
@@ -216,38 +214,15 @@ export function buildVessel(
       : 1 - progress / 100;
   let cargo = buildCargo(scene, materials, shipRoot, shadow, fraction);
 
-  const label = createLabelPlane(
-    scene,
-    `vessel-label-${vessel.name}`,
-    vessel.loa * 0.26,
-    vessel.loa * 0.1,
-    vessel.name,
-    "",
-  );
-  label.plane.parent = shipRoot;
-  label.plane.position.set(0, DECK_Y + 48, 0);
-
-  const updateLabel = (current: Vessel) => {
-    const currentProgress = computeProgress(current.completedTeu, current.plannedTeu);
-    const operation =
-      current.operation === "loading" ? "погрузка" : "выгрузка";
-    drawLabel(
-      label.texture,
-      [
-        { text: current.name, size: 58, color: "#f5fafc", bold: true },
-        {
-          text: `${operation} · ${Math.round(currentProgress)}% · причал ${current.berth}`,
-          size: 29,
-          color: "#8fdcf6",
-        },
-      ],
-      current.status === "warning" ? "#e3a72b" : "#49c8f0",
-    );
-  };
-  updateLabel(vessel);
+  // Подписи вынесены в экранный слой (SceneLabels): 3D-щиты занимали
+  // половину кадра и перекрывали судно.
 
   tagEntity(shipRoot, vessel.id);
   castShadows(shadow, shipRoot);
+
+  // GLB-модель заменяет корпус и палубный груз; после подмены пересборка
+  // параметрического cargo недопустима (меши уже удалены).
+  const swapState = { active: false };
 
   return {
     id: vessel.id,
@@ -260,7 +235,9 @@ export function buildVessel(
     labelTitle: vessel.name,
     update: (entity) => {
       const current = entity as Vessel;
-      updateLabel(current);
+      if (swapState.active) {
+        return;
+      }
       const currentProgress = computeProgress(current.completedTeu, current.plannedTeu);
       const nextFraction =
         current.operation === "loading"
@@ -276,6 +253,9 @@ export function buildVessel(
           mesh.metadata = { ...(mesh.metadata ?? {}), entityId: current.id, shadowCaster: true };
         }
       }
+    },
+    onModelSwap: () => {
+      swapState.active = true;
     },
   };
 }

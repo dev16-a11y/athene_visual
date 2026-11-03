@@ -19,4 +19,9 @@ export interface EntityVisual {
   };
   update: (entity: PortEntity, snapshot: Snapshot) => void;
   tick?: (timeSeconds: number, deltaSeconds: number) => void;
+  /**
+   * Вызывается один раз после подмены параметрической геометрии GLB-моделью.
+   * Построитель обязан заморозить логику, трогающую удалённую параметрику.
+   */
+  onModelSwap?: () => void;
 }
