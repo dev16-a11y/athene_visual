@@ -259,6 +259,8 @@ export class KandlaScene implements SceneHandle {
         mode: "kandla",
         geo: frame,
         layers,
+        // Высоты уровней: проверки берут их отсюда, чтобы не дублировать числа.
+        heights: KANDLA_HEIGHTS,
         // Проверки в браузере: сколько мешей, где суша, где вода.
         info: () => instance.getInfo(),
         cameraGeo: () => instance.getCameraGeo(),

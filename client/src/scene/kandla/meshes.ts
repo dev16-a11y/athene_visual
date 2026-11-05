@@ -15,7 +15,7 @@ import earcut from "earcut";
 import "@babylonjs/core/Meshes/Builders/polygonBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { KANDLA_COLORS, KANDLA_HEIGHTS, KANDLA_SHALLOWS } from "./config";
+import { KANDLA_COLORS, KANDLA_HEIGHTS } from "./config";
 import type { IntertidalPolygon, KandlaLayers, LandPolygon, PierItem, Ring } from "./layers";
 import { bankTint } from "./materials";
 import type { KandlaMaterials } from "./materials";
@@ -27,7 +27,6 @@ export interface KandlaGroundStats {
   quayMeshes: number;
   quayTriangles: number;
   intertidalMeshes: number;
-  shallowTriangles: number;
   /** Площадь суши по данным слоя, км². */
   landAreaKm2: number;
 }
@@ -65,108 +64,6 @@ function applySideTint(mesh: Mesh, tint: Color3): void {
   mesh.hasVertexAlpha = false;
 }
 
-/** Сглаживание кольца: контур воды идёт по сетке 1,5 м и «лестницей». */
-function smoothRing(ring: Ring[], window: number): Ring[] {
-  const count = ring.length;
-  const result: Ring[] = [];
-  for (let index = 0; index < count; index += 1) {
-    let sumX = 0;
-    let sumZ = 0;
-    for (let offset = -window; offset <= window; offset += 1) {
-      const point = ring[(index + offset + count) % count];
-      sumX += point[0];
-      sumZ += point[1];
-    }
-    const divisor = window * 2 + 1;
-    result.push([sumX / divisor, sumZ / divisor]);
-  }
-  return result;
-}
-
-/**
- * Полоса отмели вдоль кромки воды. Строится по контуру акватории, поэтому
- * совпадает с берегом по построению, а не «примерно». Кромка сглажена: контур
- * воды — растр по сетке 1,5 м, и на нём полоса шла бы ступеньками.
- */
-export function buildShallowBand(
-  scene: Scene,
-  waterPolygons: { outer: Ring[] }[],
-  bounds: { x0: number; x1: number; z0: number; z1: number },
-  material: KandlaMaterials["shallow"],
-): { mesh: Mesh | null; triangles: number } {
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const height = KANDLA_SHALLOWS.height;
-  const width = KANDLA_SHALLOWS.width;
-  const border = 4;
-
-  for (const polygon of waterPolygons) {
-    if (polygon.outer.length < 8) continue;
-    const smoothed = smoothRing(polygon.outer, 3);
-    // Прореживание: шаг ~4 точки контура (около 6 м) — форма уже сглажена.
-    const ring = smoothed.filter((_, index) => index % 4 === 0);
-    if (ring.length < 6) continue;
-
-    let area = 0;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-      area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-    }
-    // Положительная площадь — обход против часовой стрелки, вода слева от
-    // направления обхода; иначе — справа.
-    const waterOnLeft = area > 0;
-    const nearEdge = (point: Ring): boolean =>
-      Math.abs(point[0] - bounds.x0) < border ||
-      Math.abs(point[0] - bounds.x1) < border ||
-      Math.abs(point[1] - bounds.z0) < border ||
-      Math.abs(point[1] - bounds.z1) < border;
-    const count = ring.length;
-    for (let index = 0; index < count; index += 1) {
-      const current = ring[index];
-      const next = ring[(index + 1) % count];
-      const previous = ring[(index - 1 + count) % count];
-      // Края прямоугольника съёмки — не берег: полосу там не рисуем.
-      if (nearEdge(current) && nearEdge(next)) continue;
-      // Направление берега — по соседям, чтобы у сглаженной кромки не было
-      // изломов на каждой точке.
-      const tangentX = next[0] - previous[0];
-      const tangentZ = next[1] - previous[1];
-      const tangent = Math.hypot(tangentX, tangentZ);
-      if (tangent < 0.001) continue;
-      const normalX = waterOnLeft ? -tangentZ / tangent : tangentZ / tangent;
-      const normalZ = waterOnLeft ? tangentX / tangent : -tangentX / tangent;
-
-      const base = positions.length / 3;
-      positions.push(
-        current[0], height, current[1],
-        next[0], height, next[1],
-        next[0] + normalX * width, height, next[1] + normalZ * width,
-        current[0] + normalX * width, height, current[1] + normalZ * width,
-      );
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
-  }
-
-  if (positions.length === 0) {
-    return { mesh: null, triangles: 0 };
-  }
-
-  const mesh = new Mesh("kandla-shallow", scene);
-  const normals = new Float32Array(positions.length);
-  for (let index = 1; index < normals.length; index += 3) {
-    normals[index] = 1;
-  }
-  mesh.setVerticesData("position", new Float32Array(positions), false, 3);
-  mesh.setVerticesData("normal", normals, false, 3);
-  mesh.setIndices(indices);
-  mesh.material = material;
-  mesh.isPickable = false;
-  mesh.receiveShadows = false;
-  mesh.alwaysSelectAsActiveMesh = true;
-  applyWorldUv(mesh, 70);
-  mesh.computeWorldMatrix(true);
-  return { mesh, triangles: indices.length / 3 };
-}
-
 /**
  * UV в мировых метрах: у полигонального билдера UV нормированы на габарит
  * меша, из-за чего плитка резиновая на объектах разного размера. Пишем
@@ -183,6 +80,7 @@ function applyWorldUv(mesh: Mesh, metresPerRepeat: number): void {
   mesh.setVerticesData("uv", uvs, false, 2);
 }
 
+/** Площадь кольца в м²: нужна, чтобы крупные материки строились первыми. */
 function areaOf(ring: Ring[]): number {
   let area = 0;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
@@ -262,7 +160,9 @@ export function buildQuayMeshes(
       `kandla-pier-${index}`,
       {
         shape: toVector3(pier.coords),
-        depth: KANDLA_HEIGHTS.quay + 1.1,
+        // Глубина с запасом: низ пирса должен быть ниже впадин волн, иначе
+        // между основанием и водой появляется щель и пирс «висит».
+        depth: KANDLA_HEIGHTS.quay + 2.4,
         sideOrientation: Mesh.FRONTSIDE,
         updatable: false,
       },
@@ -284,10 +184,14 @@ export function buildQuayMeshes(
       if (length < 1) continue;
       const box = MeshBuilder.CreateBox(
         `kandla-open-pier-${index}-${i}`,
-        { width: openWidth, depth: length + openWidth, height: KANDLA_HEIGHTS.quay + 1 },
+        { width: openWidth, depth: length + openWidth, height: KANDLA_HEIGHTS.quay + 2.4 },
         scene,
       );
-      box.position.set((x1 + x2) / 2, KANDLA_HEIGHTS.quay - (KANDLA_HEIGHTS.quay + 1) / 2, (z1 + z2) / 2);
+      box.position.set(
+        (x1 + x2) / 2,
+        KANDLA_HEIGHTS.quay - (KANDLA_HEIGHTS.quay + 2.4) / 2,
+        (z1 + z2) / 2,
+      );
       box.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
       add(box, 22, QUAY_TINT);
     }
@@ -301,10 +205,11 @@ export function buildQuayMeshes(
       if (length < 1) continue;
       const box = MeshBuilder.CreateBox(
         `kandla-breakwater-${index}-${i}`,
-        { width: 18, depth: length + 12, height: 2.2 },
+        // Волнолом стоит в воде: высота с запасом ниже впадин волн.
+        { width: 18, depth: length + 12, height: 3.8 },
         scene,
       );
-      box.position.set((x1 + x2) / 2, 0.5, (z1 + z2) / 2);
+      box.position.set((x1 + x2) / 2, 0.3, (z1 + z2) / 2);
       box.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
       add(box, 22);
     }
@@ -346,13 +251,6 @@ export function buildKandlaGround(
   const land = buildLandMeshes(scene, layers.land, materials.land);
   const quay = buildQuayMeshes(scene, layers.quay, materials.quay);
   const intertidal = buildIntertidalMeshes(scene, layers.intertidal, materials.intertidal);
-  // Полоса отмели строится по контуру акватории — она всегда на месте берега.
-  const shallow = buildShallowBand(
-    scene,
-    layers.water.polygons,
-    layers.meta.bounds,
-    materials.shallow,
-  );
 
   const landAreaKm2 = layers.land.reduce((sum, polygon) => sum + polygon.areaKm2, 0);
 
@@ -364,14 +262,8 @@ export function buildKandlaGround(
       quayMeshes: quay.meshes.length,
       quayTriangles: quay.triangles,
       intertidalMeshes: intertidal.meshes.length,
-      shallowTriangles: shallow.triangles,
       landAreaKm2: +landAreaKm2.toFixed(2),
     },
-    meshes: [
-      ...land.meshes,
-      ...quay.meshes,
-      ...intertidal.meshes,
-      ...(shallow.mesh ? [shallow.mesh] : []),
-    ],
+    meshes: [...land.meshes, ...quay.meshes, ...intertidal.meshes],
   };
 }

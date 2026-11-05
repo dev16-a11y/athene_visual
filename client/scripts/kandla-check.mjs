@@ -59,6 +59,7 @@ const debug = await page.evaluate(() => {
     camera: api.cameraGeo(),
     meshes: api.meshes(),
     water: api.water(),
+    heights: api.heights,
     geo: (() => {
       const frame = api.geo;
       const origin = frame.origin;
@@ -154,15 +155,24 @@ if (debug.missing) {
 
   const landTop = Math.max(...land.map((mesh) => mesh.maxY));
   const landBottom = Math.min(...land.map((mesh) => mesh.minY));
+  const heights = debug.heights;
   check(
     "верх суши выше воды",
-    Math.abs(landTop - 1.6) < 0.05,
-    `верх ${landTop.toFixed(2)} м`,
+    Math.abs(landTop - heights.land) < 0.05,
+    `верх ${landTop.toFixed(2)} м при проектных ${heights.land}`,
   );
-  check("плита суши уходит под воду", landBottom < -0.5, `низ ${landBottom.toFixed(2)} м`);
+  check(
+    "плита суши уходит под воду",
+    landBottom < heights.land - heights.slabDepth + 0.05,
+    `низ ${landBottom.toFixed(2)} м, плита ${heights.slabDepth} м`,
+  );
 
   const quayTop = piers.length ? Math.max(...piers.map((mesh) => mesh.maxY)) : 0;
-  check("причальные основания выше воды", quayTop > 1.5, `верх ${quayTop.toFixed(2)} м`);
+  check(
+    "причальные основания выше воды",
+    Math.abs(quayTop - heights.quay) < 0.05,
+    `верх ${quayTop.toFixed(2)} м при проектных ${heights.quay}`,
+  );
 
   check(
     "вода FFT, полный круг",
@@ -191,7 +201,7 @@ if (debug.missing) {
     const scene = window.__smarttwinDebug.scene;
     const camera = scene.activeCamera;
     const V3 = camera.target.constructor;
-    camera.setTarget(new V3(camera.target.x + 700, 1.6, camera.target.z + 500));
+    camera.setTarget(new V3(camera.target.x + 700, window.__smarttwinDebug.heights.land, camera.target.z + 500));
   });
   await page.waitForTimeout(1200);
   const after = await page.evaluate(() => window.__smarttwinDebug.cameraGeo());
@@ -203,17 +213,16 @@ if (debug.missing) {
     `${before.lon.toFixed(5)} → ${after.lon.toFixed(5)} (${deltaLon.toFixed(0)} м, ${deltaLat.toFixed(0)} м)`,
   );
 
-  // Отмель и стенки берега: то, что делает кромку читаемой.
+  // Кромка берега: стенка темнее суши, а сама суша стоит на месте.
   const shading = await page.evaluate(() => {
     const scene = window.__smarttwinDebug.scene;
-    const band = scene.getMeshByName("kandla-shallow");
     const land = scene.getMeshByName("kandla-land-1");
     const colours = land?.getVerticesData("color");
     const normals = land?.getVerticesData("normal");
     const positions = land?.getVerticesData("position");
     let sideShade = null;
     let topShade = null;
-    if (colours && normals) {
+    if (colours && normals && positions) {
       let sideSum = 0;
       let sideCount = 0;
       let topSum = 0;
@@ -231,31 +240,8 @@ if (debug.missing) {
       sideShade = sideCount ? sideSum / sideCount : null;
       topShade = topCount ? topSum / topCount : null;
     }
-    return {
-      band: band
-        ? {
-            y: band.position.y + band.getBoundingInfo().boundingBox.maximum.y,
-            triangles: band.getTotalIndices() / 3,
-            alpha: band.material?.alpha ?? null,
-            depthWrite: band.material?.disableDepthWrite ?? null,
-          }
-        : null,
-      sideShade,
-      topShade,
-      fogDensity: scene.fogDensity,
-    };
+    return { sideShade, topShade, fogDensity: scene.fogDensity };
   });
-  check(
-    "отмель построена вдоль всей кромки",
-    Boolean(shading.band) &&
-      shading.band.triangles > 600 &&
-      Math.abs(shading.band.y - 0.9) < 0.01 &&
-      shading.band.alpha > 0.15 &&
-      shading.band.alpha < 0.45,
-    shading.band
-      ? `${shading.band.triangles} треугольников, верх ${shading.band.y.toFixed(2)} м, прозрачность ${shading.band.alpha}`
-      : "меша нет",
-  );
   check(
     "стенка берега темнее суши",
     shading.sideShade !== null &&
@@ -267,6 +253,90 @@ if (debug.missing) {
     "дымка не съедает дальний берег",
     shading.fogDensity <= 0.00012,
     `плотность ${shading.fogDensity}`,
+  );
+
+  // Главное: вода не «плавает» поверх суши. Камера зафиксирована, поэтому
+  // пиксели суши обязаны стоять на месте, а пиксели воды — жить.
+  const stability = await page.evaluate(async () => {
+    const api = window.__smarttwinDebug;
+    const scene = api.scene;
+    const engine = scene.getEngine();
+    const camera = scene.activeCamera;
+    const V3 = camera.target.constructor;
+    camera.setTarget(new V3(120, window.__smarttwinDebug.heights.land, 800));
+    camera.alpha = -1.3;
+    camera.beta = 0.8;
+    camera.radius = 3000;
+    camera.inertia = 0;
+    for (const mesh of scene.meshes) {
+      if (mesh.name.startsWith("kandla-") || mesh.name === "water") {
+        mesh.isPickable = true;
+      }
+    }
+    scene.render();
+    const gl = engine._gl;
+    const width = engine.getRenderWidth();
+    const height = engine.getRenderHeight();
+    const pixel = (x, y) => {
+      const buffer = new Uint8Array(4);
+      gl.readPixels(x, height - 1 - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+      return [buffer[0], buffer[1], buffer[2]];
+    };
+    const landPoints = [];
+    const waterPoints = [];
+    for (let y = 30; y < height - 10; y += 27) {
+      for (let x = 12; x < width - 12; x += 27) {
+        const hit = scene.pick(x, y, (mesh) => mesh.isPickable && mesh.isVisible);
+        const name = hit?.pickedMesh?.name ?? "";
+        const colour = pixel(x, y);
+        if (name.startsWith("kandla-land") && colour[0] > 120 && landPoints.length < 30) {
+          landPoints.push([x, y]);
+        } else if (name === "water" && waterPoints.length < 30) {
+          waterPoints.push([x, y]);
+        }
+      }
+    }
+    const measure = async (points) => {
+      const frames = [];
+      for (let frame = 0; frame < 5; frame += 1) {
+        frames.push(points.map(([x, y]) => pixel(x, y)));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      let unstable = 0;
+      for (let index = 0; index < points.length; index += 1) {
+        for (let frame = 1; frame < frames.length; frame += 1) {
+          const first = frames[0][index];
+          const other = frames[frame][index];
+          const delta =
+            Math.abs(first[0] - other[0]) +
+            Math.abs(first[1] - other[1]) +
+            Math.abs(first[2] - other[2]);
+          if (delta > 40) {
+            unstable += 1;
+            break;
+          }
+        }
+      }
+      return unstable;
+    };
+    const landUnstable = await measure(landPoints);
+    const waterUnstable = await measure(waterPoints);
+    return {
+      landPoints: landPoints.length,
+      waterPoints: waterPoints.length,
+      landUnstable,
+      waterUnstable,
+    };
+  });
+  check(
+    "вода не гуляет поверх суши",
+    stability.landPoints >= 10 && stability.landUnstable <= 1,
+    `${stability.landUnstable} из ${stability.landPoints} точек суши меняются`,
+  );
+  check(
+    "вода при этом живая",
+    stability.waterPoints >= 5 && stability.waterUnstable >= 1,
+    `${stability.waterUnstable} из ${stability.waterPoints} точек воды меняются`,
   );
   // Интерфейс: демо-панели и их подписи скрыты, геооснова на месте.
   const ui = await page.evaluate(() => ({
@@ -295,7 +365,7 @@ if (debug.missing) {
     const scene = window.__smarttwinDebug.scene;
     const camera = scene.activeCamera;
     const V3 = camera.target.constructor;
-    camera.setTarget(new V3(-1500, 1.6, -1500));
+    camera.setTarget(new V3(-1500, window.__smarttwinDebug.heights.land, -1500));
   });
   await page.waitForTimeout(600);
   await page.locator(".topbar-actions button.icon-button").first().click();
@@ -325,7 +395,7 @@ if (debug.missing) {
     const scene = window.__smarttwinDebug.scene;
     const camera = scene.activeCamera;
     const V3 = camera.target.constructor;
-    camera.setTarget(new V3(120, 1.6, 800));
+    camera.setTarget(new V3(120, window.__smarttwinDebug.heights.land, 800));
     camera.alpha = -1.3;
     camera.beta = 0.8;
     camera.radius = 3000;
@@ -337,7 +407,7 @@ if (debug.missing) {
     const scene = window.__smarttwinDebug.scene;
     const camera = scene.activeCamera;
     const V3 = camera.target.constructor;
-    camera.setTarget(new V3(0, 1.6, 1000));
+    camera.setTarget(new V3(0, window.__smarttwinDebug.heights.land, 1000));
     camera.alpha = 0.35;
     camera.beta = 1.05;
     camera.radius = 1600;
@@ -395,7 +465,7 @@ if (debug.missing) {
     const samples = [];
     for (let z = bbox.z0 + 300; z <= bbox.z1 - 300; z += 300) {
       for (let x = bbox.x0 + 300; x <= bbox.x1 - 300; x += 300) {
-        const screen = V3.Project(new V3(x, isLand(x, z) ? 1.6 : 0, z), M.Identity(), transform, viewport);
+        const screen = V3.Project(new V3(x, isLand(x, z) ? window.__smarttwinDebug.heights.land : 0, z), M.Identity(), transform, viewport);
         if (screen.z < 0 || screen.z > 1) continue;
         const px = Math.round(screen.x);
         const py = Math.round(screen.y);

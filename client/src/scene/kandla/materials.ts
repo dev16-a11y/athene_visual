@@ -12,14 +12,12 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Scene } from "@babylonjs/core/scene";
 
-import { KANDLA_COLORS, KANDLA_SHALLOWS } from "./config";
+import { KANDLA_COLORS } from "./config";
 
 export interface KandlaMaterials {
   land: StandardMaterial;
   quay: StandardMaterial;
   intertidal: StandardMaterial;
-  /** Полоса мутной воды вдоль берега. */
-  shallow: StandardMaterial;
   dispose(): void;
 }
 
@@ -143,35 +141,17 @@ export function createKandlaMaterials(scene: Scene): KandlaMaterials {
   intertidal.ambientColor = new Color3(0.18, 0.18, 0.17);
   intertidal.backFaceCulling = false;
 
-  // Отмель: полупрозрачная полоса воды у берега. Свет и туман общие со сценой,
-  // иначе у горизонта полоса выпадала бы из дымки.
-  const shallowTexture = tile(
-    createGrainTexture(scene, "kandla-shallow-grain", KANDLA_COLORS.shallow, 0.05),
-    70,
-  );
-  const shallow = new StandardMaterial("kandla-shallow", scene);
-  shallow.diffuseTexture = shallowTexture;
-  shallow.diffuseColor = Color3.White();
-  shallow.specularColor = new Color3(0.02, 0.02, 0.02);
-  shallow.ambientColor = new Color3(0.2, 0.2, 0.19);
-  shallow.alpha = KANDLA_SHALLOWS.alpha;
-  shallow.backFaceCulling = false;
-  shallow.disableDepthWrite = true;
-
   return {
     land,
     quay,
     intertidal,
-    shallow,
     dispose(): void {
       landTexture.dispose();
       quayTexture.dispose();
       intertidalTexture.dispose();
-      shallowTexture.dispose();
       land.dispose();
       quay.dispose();
       intertidal.dispose();
-      shallow.dispose();
     },
   };
 }
