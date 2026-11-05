@@ -28,6 +28,13 @@ page.on("pageerror", (error) => errors.push(error.message));
 
 await page.goto(url, { waitUntil: "domcontentloaded" });
 await page.waitForSelector(".dock-center", { timeout: 30_000 });
+// Экран загрузки держится до готовности GLB-моделей — иначе на снимке
+// окажется оверлей, а не терминал.
+await page
+  .waitForFunction(() => !document.querySelector(".loading-screen"), {
+    timeout: 30_000,
+  })
+  .catch(() => undefined);
 await page.waitForTimeout(13_000);
 
 await page.screenshot({
@@ -61,6 +68,51 @@ await page.waitForSelector(".history-bar", { timeout: 15_000 });
 await page.waitForTimeout(1_500);
 await page.screenshot({
   path: path.join(outDir, "history-1920.png"),
+  fullPage: false,
+});
+
+// Крупный план площадки генеральных грузов: у сцены нет публичного метода
+// «наведи камеру на площадку», поэтому ракурс задаётся тем же приёмом, что и в
+// отладочных пробах, — наблюдателем кадра поверх возврата камеры к исходному.
+await page.locator(".mode-toggle button").first().click();
+await page.waitForTimeout(1_500);
+await page.evaluate(() => {
+  const scene = window.__smarttwinDebug.scene;
+  const camera = scene.activeCamera;
+  const V3 = camera.target.constructor;
+  // Вид с акватории на площадку: портальные краны на переднем плане, за ними
+  // штабели, мобильные краны на южном проезде.
+  const pose = { alpha: -1.5708, beta: 1.02, radius: 340, target: { x: 470, y: 14, z: 170 } };
+  scene.onBeforeRenderObservable.add(() => {
+    camera.alpha = pose.alpha;
+    camera.beta = pose.beta;
+    camera.radius = pose.radius;
+    camera.setTarget(new V3(pose.target.x, pose.target.y, pose.target.z));
+    camera.inertialAlphaOffset = 0;
+    camera.inertialBetaOffset = 0;
+    camera.inertialRadiusOffset = 0;
+  });
+});
+await page.waitForTimeout(2_500);
+await page.screenshot({
+  path: path.join(outDir, "cargo-1920.png"),
+  fullPage: false,
+});
+
+// Снимок WebGPU-варианта: та же сцена, другой движок (FFT-вода откатывается).
+const webgpu = await browser.newPage({
+  viewport: { width: 1920, height: 1080 },
+  deviceScaleFactor: 1,
+});
+webgpu.on("pageerror", (error) => errors.push(error.message));
+await webgpu.goto(`${url}?engine=webgpu`, { waitUntil: "domcontentloaded" });
+await webgpu.waitForSelector(".dock-center", { timeout: 30_000 });
+await webgpu
+  .waitForFunction(() => !document.querySelector(".loading-screen"), { timeout: 30_000 })
+  .catch(() => undefined);
+await webgpu.waitForTimeout(13_000);
+await webgpu.screenshot({
+  path: path.join(outDir, "webgpu-overview-1920.png"),
   fullPage: false,
 });
 

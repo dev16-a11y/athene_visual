@@ -23,6 +23,13 @@ page.on("console", (m) => {
 });
 await page.goto(url, { waitUntil: "domcontentloaded" });
 await page.waitForSelector(".dock-center", { timeout: 40_000 });
+// Экран загрузки держится до готовности GLB-моделей: снимать раньше —
+// значит поймать в кадр оверлей вместо сцены.
+await page
+  .waitForFunction(() => !document.querySelector(".loading-screen"), {
+    timeout: 30_000,
+  })
+  .catch(() => undefined);
 await page.waitForTimeout(5000);
 
 // Ракурс, в котором видна вода перед причалом и точка отражения маркера.

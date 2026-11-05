@@ -47,6 +47,9 @@ import { WATER_LEVEL } from "./water/config";
 import { swapInModel } from "./models";
 import { resolveModelKey } from "./models";
 import { buildYard } from "./yard";
+import { buildContainerYard, type ContainerYardStats } from "./containerYard";
+import { buildGeneralCargo, type GeneralCargoStats } from "./generalCargo";
+import { buildCargoCranes, type CargoCraneStats } from "./cargoCranes";
 import { buildVessel } from "./vessel";
 import { buildCrane } from "./crane";
 import { buildTruck } from "./truck";
@@ -122,6 +125,13 @@ export class PortScene {
   private renderedFrames = 0;
   private headingTarget = Quaternion.Identity();
   private headingScratch = Quaternion.Identity();
+  /** Незавершённые подмены параметрики на GLB: см. whenModelsReady. */
+  private readonly modelSwaps: Promise<void>[] = [];
+  /** Статистика контейнерного двора — для dev-пробы и отчётов. */
+  private containerYard: ContainerYardStats | null = null;
+  private generalCargo: GeneralCargoStats | null = null;
+  private cargoCranes: CargoCraneStats | null = null;
+  private containerYardStarted = false;
 
   private constructor(
     canvas: HTMLCanvasElement,
@@ -179,6 +189,9 @@ export class PortScene {
             trainStats: () => unknown;
             focusEntity: (id: string) => unknown;
             railProbe: () => Promise<unknown>;
+            containerYard: () => ContainerYardStats | null;
+            generalCargo: () => GeneralCargoStats | null;
+    cargoCranes: () => CargoCraneStats | null;
             waterInfo: () => WaterInfo;
             waterSettings: (partial: Partial<WaterSettings>) => WaterInfo;
             waterLevel: () => number;
@@ -188,6 +201,9 @@ export class PortScene {
         }
       ).__smarttwinDebug = {
         scene: this.scene,
+        containerYard: () => this.containerYard,
+        generalCargo: () => this.generalCargo,
+    cargoCranes: () => this.cargoCranes,
         motionProbe: (id?: string) => this.probeMotion(id),
         setMotionMode: (id: string, mode: "route" | "telemetry") => {
           this.visuals.get(id)?.motion?.setMode(mode);
@@ -300,7 +316,7 @@ export class PortScene {
     this.camera.fov = CAMERA_FOV;
     this.camera.attachControl(canvas, true);
     this.camera.lowerRadiusLimit = 80;
-    this.camera.upperRadiusLimit = 780;
+    this.camera.upperRadiusLimit = 900;
     this.camera.lowerBetaLimit = 0.22;
     this.camera.upperBetaLimit = 1.42;
     this.camera.wheelDeltaPercentage = 0.018;
@@ -346,13 +362,62 @@ export class PortScene {
     if (this.water.kind === "legacy") {
       console.warn("[water] используется прежняя вода:", this.water.getInfo().fallbackReason);
     }
-    buildWarehouses(
-      this.scene,
-      this.materials,
-      this.roots.warehouses,
-      this.shadow,
+    // Здания — тоже внешние модели: их загрузку учитываем в whenModelsReady,
+    // иначе ряд складов «проявится» уже после снятия экрана загрузки.
+    this.modelSwaps.push(
+      ...buildWarehouses(
+        this.scene,
+        this.materials,
+        this.roots.warehouses,
+        this.shadow,
+      ),
     );
     buildBackground(this.scene, this.materials, this.roots.terminal);
+    // Генеральные грузы: та же схема, что и у контейнеров — шаблоны в thin
+    // instances. Площадка не зависит от снимка, поэтому строится сразу.
+    this.modelSwaps.push(
+      buildGeneralCargo(this.scene, this.roots.cargo)
+        .then((stats) => {
+          this.generalCargo = stats;
+          if (stats) {
+            console.info(
+              `[cargo] ${stats.units} мест, ${stats.templates} шаблонов, ` +
+                `${stats.drawMeshes} вызовов отрисовки`,
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn(
+            "[cargo] площадка не построена:",
+            error instanceof Error ? error.message : error,
+          );
+        }),
+    );
+    // Краны генеральных грузов: портальные на подкрановом пути и мобильные на
+    // южном проезде площадки. Ждут загрузки так же, как грузы и склады.
+    this.modelSwaps.push(
+      buildCargoCranes(
+        this.scene,
+        this.materials,
+        this.roots.cargoCranes,
+        this.shadow,
+      )
+        .then((stats) => {
+          this.cargoCranes = stats;
+          if (stats) {
+            console.info(
+              `[cranes] ${stats.cranes} кранов, ${stats.templates} шаблонов, ` +
+                `${stats.drawMeshes} вызовов отрисовки`,
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn(
+            "[cranes] краны не построены:",
+            error instanceof Error ? error.message : error,
+          );
+        }),
+    );
 
     const ringMaterial = this.materials.marker;
     this.ring = MeshBuilder.CreateTorus(
@@ -616,8 +681,7 @@ export class PortScene {
 
   setSnapshot(snapshot: Snapshot): void {
     this.snapshot = snapshot;
-    this.snapshotApplied += 1;
-    const entities: PortEntity[] = [
+    this.snapshotApplied += 1;    const entities: PortEntity[] = [
       ...snapshot.vessels,
       ...snapshot.cranes,
       ...snapshot.yards,
@@ -655,6 +719,29 @@ export class PortScene {
     }
     if (this.selectedId) {
       this.applySelection();
+    }
+    // Контейнерный двор строится один раз: штабели общие для всех площадок
+    // (thin instances 45 шаблонов «марка × тип»).
+    if (!this.containerYardStarted) {
+      this.containerYardStarted = true;
+      this.modelSwaps.push(
+        buildContainerYard(this.scene, this.roots.containers, snapshot.yards)
+          .then((stats) => {
+            this.containerYard = stats;
+            if (stats) {
+              console.info(
+                `[containers] ${stats.containers} контейнеров, ${stats.teu} TEU, ` +
+                  `${stats.templates} шаблонов, ${stats.drawMeshes} вызовов отрисовки`,
+              );
+            }
+          })
+          .catch((error) => {
+            console.warn(
+              "[containers] двор не построен:",
+              error instanceof Error ? error.message : error,
+            );
+          }),
+      );
     }
   }
 
@@ -760,24 +847,59 @@ export class PortScene {
    * Параметрика работает, пока модель грузится или если загрузка не удалась.
    */
   private swapModelAsync(visual: EntityVisual, modelKey: string): void {
-    void swapInModel(
+    const swap = swapInModel(
       this.scene,
       visual.root,
       modelKey,
       visual.id,
       this.shadow,
-    ).then((result) => {
-      if (!result || visual.root.isDisposed()) {
-        return;
-      }
-      for (const mesh of visual.meshes) {
-        this.shadow.removeShadowCaster(mesh, false);
-        mesh.dispose();
-      }
-      visual.meshes = result.meshes;
-      visual.selectionMeshes = result.meshes;
-      visual.onModelSwap?.();
-    });
+    )
+      .then((result) => {
+        if (!result || visual.root.isDisposed()) {
+          return;
+        }
+        for (const mesh of visual.meshes) {
+          this.shadow.removeShadowCaster(mesh, false);
+          mesh.dispose();
+        }
+        visual.meshes = result.meshes;
+        visual.selectionMeshes = result.meshes;
+        // Страховка: всё, что осталось в узле сущности вне модели, гасим. Список
+        // visual.meshes ведут сами построители, и забытая в нём деталь висела
+        // рядом с моделью — так за кормой судна оставались труба, мачта, люки и
+        // полосы иллюминаторов старой параметрики. Всё, что действительно нужно
+        // после подмены, построитель включает сам в onModelSwap.
+        const model = new Set<AbstractMesh>(result.meshes);
+        for (const mesh of visual.root.getChildMeshes()) {
+          if (model.has(mesh)) {
+            continue;
+          }
+          mesh.setEnabled(false);
+          this.shadow.removeShadowCaster(mesh, false);
+        }
+        visual.onModelSwap?.();
+      })
+      .catch((error) => {
+        // Модель — украшение, а не требование: параметрика уже стоит в сцене.
+        console.warn(
+          `[scene] подмена модели ${modelKey} пропущена:`,
+          error instanceof Error ? error.message : error,
+        );
+      });
+    this.modelSwaps.push(swap);
+  }
+
+  /**
+   * Готовность внешних моделей: экран загрузки держится, пока все GLB,
+   * запрошенные при сборке сцены, не встанут на место. Без этого первые
+   * ~1,5 с пользователь видит параметрическую геометрию, которую затем
+   * подменяет модель — на перезагрузке это заметное мерцание.
+   *
+   * Промисы всегда завершаются (неудачная загрузка тоже), поэтому ожидание
+   * не может зависнуть навсегда; вызывающий всё равно страхует таймаутом.
+   */
+  whenModelsReady(): Promise<void> {
+    return Promise.all(this.modelSwaps).then(() => undefined);
   }
 
   private applySelection(): void {

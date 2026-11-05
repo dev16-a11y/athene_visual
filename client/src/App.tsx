@@ -49,10 +49,35 @@ function createHandlers(
   };
 }
 
+/** Предел ожидания GLB: медленная сеть не должна держать экран вечно. */
+const MODEL_WAIT_MS = 15_000;
+
+/**
+ * Ожидание с потолком: если модели не пришли за отведённое время, сцену
+ * всё равно показываем (на параметрике) — пустой экран хуже.
+ */
+function withTimeout(promise: Promise<void>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = window.setTimeout(() => {
+      console.warn(
+        `[app] модели не готовы за ${ms} мс, показываю сцену как есть`,
+      );
+      resolve();
+    }, ms);
+    void promise.then(() => {
+      window.clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 export default function App() {
   const state = useAppState();
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sceneLabels, setSceneLabels] = useState<SceneLabel[]>([]);
+  // Сцена готова не тогда, когда создан движок, а когда встали GLB-модели:
+  // до этого в кадре параметрическая геометрия, которую видно ~1,5 с.
+  const [sceneReady, setSceneReady] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<PortScene | null>(null);
   const sourceRef = useRef<PortDataSource | null>(null);
@@ -137,6 +162,8 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    // Сцена пересоздаётся — загрузка снова нужна, пока не встанут модели.
+    setSceneReady(false);
     void import("./scene/PortScene")
       .then(async ({ PortScene }) => {
         if (cancelled || !canvasRef.current || sceneRef.current) {
@@ -160,11 +187,21 @@ export default function App() {
           return;
         }
         sceneRef.current = scene;
+        // Модели догружаются параллельно: ждём их, пока держится загрузка.
+        await withTimeout(scene.whenModelsReady(), MODEL_WAIT_MS);
+        if (!cancelled && sceneRef.current === scene) {
+          setSceneReady(true);
+        }
       })
       .catch((error) => {
         // Ошибка загрузки чанка (сеть, деплой): без catch обещание
         // повисало unhandled, а экран — навсегда в «Подключении…».
         console.error("[app] не удалось загрузить модуль сцены:", error);
+        // Сцену не покажем, но интерфейс с данными — да: пусть виден статус,
+        // а не бесконечный экран загрузки.
+        if (!cancelled) {
+          setSceneReady(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -277,7 +314,7 @@ export default function App() {
         <SceneLabels labels={sceneLabels} selectedId={state.selectedId} />
       )}
 
-      {!displaySnapshot && (
+      {(!displaySnapshot || !sceneReady) && (
         <div className="loading-screen">
           <span className="loading-logo">
             <LogoMark size={54} />

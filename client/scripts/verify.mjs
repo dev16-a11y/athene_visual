@@ -105,13 +105,23 @@ try {
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".connection-live", { timeout: 30_000 });
   await page.waitForSelector(".vessel-row", { timeout: 20_000 });
+  // Экран загрузки держится до готовности GLB-моделей: без ожидания клики
+  // в первые ~2 с упираются в оверлей.
+  await page
+    .waitForFunction(() => !document.querySelector(".loading-screen"), {
+      timeout: 30_000,
+    })
+    .catch(() => undefined);
   await page.waitForTimeout(700);
 
   const initialRows = await page.locator(".vessel-row").allInnerTexts();
+  // Демо тикает по таймеру: пока грузятся GLB (экран загрузки ждёт модели),
+  // ORION успевает взять ещё одну партию, и 68% превращается в 69%. Проверяем,
+  // что на панели исходная загрузка, а не заглушка, допуская один тик.
   check(
     "initial demo values on the server",
-    initialRows.some((row) => row.includes("68%")) &&
-      initialRows.some((row) => row.includes("42%")),
+    initialRows.some((row) => /\b6[89]%/.test(row)) &&
+      initialRows.some((row) => /\b4[23]%/.test(row)),
     initialRows.map((row) => row.replace(/\s+/g, " ")).join(" | "),
   );
   check(
@@ -321,6 +331,14 @@ try {
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector(".dock-center", { timeout: 30_000 });
+  // После перезагрузки сцена поднимается заново вместе с 45 шаблонами
+  // контейнеров: ждём сам признак жизни, а не фиксированную паузу.
+  await page
+    .waitForFunction(
+      () => Boolean(window.__smarttwinDebug?.scene) && window.__smarttwinDebug.scene.isDisposed === false,
+      { timeout: 45_000 },
+    )
+    .catch(() => undefined);
   const recreated = await page.evaluate(
     () =>
       Boolean(window.__smarttwinDebug?.scene) &&

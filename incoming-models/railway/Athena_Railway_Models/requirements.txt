@@ -1,4 +1,0 @@
-numpy>=1.24
-Pillow>=10
-# Optional, only for the supplied preview renderer:
-mitsuba==3.9.1

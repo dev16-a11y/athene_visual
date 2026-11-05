@@ -1,0 +1,231 @@
+{
+  "yards": [
+    {
+      "block": "A1",
+      "capacityTeu": 4800,
+      "occupiedTeu": 3030,
+      "renderedContainers": 1925,
+      "renderedTeu": 3030
+    },
+    {
+      "block": "A2",
+      "capacityTeu": 4800,
+      "occupiedTeu": 2646,
+      "renderedContainers": 1723,
+      "renderedTeu": 2646
+    },
+    {
+      "block": "B1",
+      "capacityTeu": 4800,
+      "occupiedTeu": 3462,
+      "renderedContainers": 2260,
+      "renderedTeu": 3462
+    },
+    {
+      "block": "B2",
+      "capacityTeu": 4800,
+      "occupiedTeu": 4368,
+      "renderedContainers": 2882,
+      "renderedTeu": 4368
+    },
+    {
+      "block": "C1",
+      "capacityTeu": 4800,
+      "occupiedTeu": 3222,
+      "renderedContainers": 2046,
+      "renderedTeu": 3222
+    },
+    {
+      "block": "C2",
+      "capacityTeu": 4800,
+      "occupiedTeu": 2358,
+      "renderedContainers": 1534,
+      "renderedTeu": 2358
+    }
+  ],
+  "containers": {
+    "total": 12370,
+    "teu": 19086,
+    "templates": 45,
+    "drawMeshes": 360,
+    "bbox": {
+      "minX": -312.95001220703125,
+      "maxX": 312.95001220703125,
+      "minY": 2.119999885559082,
+      "maxY": 13.704000473022461,
+      "minZ": 113.80000305175781,
+      "maxZ": 326.20001220703125
+    }
+  },
+  "cargo": {
+    "units": 1640,
+    "templates": 15,
+    "drawMeshes": 62,
+    "byType": {
+      "steel_plates": 124,
+      "steel_slabs": 120,
+      "steel_coils": 84,
+      "large_pipes": 115,
+      "rebar_bundle": 154,
+      "steel_beams": 117,
+      "galvanized_pipes": 130,
+      "timber_bundle": 122,
+      "wire_rod_coils": 36,
+      "wooden_crate": 22,
+      "cable_drum": 60,
+      "big_bags": 101,
+      "paper_rolls": 71,
+      "aluminium_ingots": 184,
+      "copper_cathodes": 200
+    },
+    "bbox": {
+      "minX": -297,
+      "maxX": 629.2694091796875,
+      "minY": 1.940000057220459,
+      "maxY": 3.8399999141693115,
+      "minZ": 73.5,
+      "maxZ": 379.677490234375
+    }
+  },
+  "viewport": {
+    "width": 1669,
+    "height": 939
+  },
+  "projected": {
+    "padCentre": {
+      "x": 1356,
+      "y": 430,
+      "inside": true
+    },
+    "staging": {
+      "x": 563,
+      "y": 559,
+      "inside": true
+    },
+    "shipWest": {
+      "x": 319,
+      "y": 659,
+      "inside": true
+    },
+    "shipEast": {
+      "x": 708,
+      "y": 679,
+      "inside": true
+    }
+  },
+  "drawCalls": 2074,
+  "triangles": 7981778,
+  "textures": 216,
+  "results": [
+    {
+      "name": "контейнерный двор: 45 шаблонов (15 линий × 3 типа)",
+      "pass": true,
+      "detail": "шаблонов: 45"
+    },
+    {
+      "name": "контейнеров больше 10 000",
+      "pass": true,
+      "detail": "контейнеров: 12370"
+    },
+    {
+      "name": "TEU на сцене совпадают с данными площадок",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "контейнеры стоят на плите двора",
+      "pass": true,
+      "detail": "низ штабеля Y=2.12"
+    },
+    {
+      "name": "контейнерные штабели не выше пяти ярусов",
+      "pass": true,
+      "detail": "верх штабеля Y=13.70"
+    },
+    {
+      "name": "контейнеры не выходят за площадки",
+      "pass": true,
+      "detail": "вне площадок: 0"
+    },
+    {
+      "name": "двор укладывается в 400 вызовов отрисовки",
+      "pass": true,
+      "detail": "360 мешей-мастеров"
+    },
+    {
+      "name": "генеральные грузы: все 15 моделей в деле",
+      "pass": true,
+      "detail": "шаблонов: 15, мест: 1640"
+    },
+    {
+      "name": "генеральных грузов больше 1 500 мест",
+      "pass": true,
+      "detail": "мест: 1640"
+    },
+    {
+      "name": "площадка укладывается в 80 вызовов отрисовки",
+      "pass": true,
+      "detail": "62 мешей-мастеров"
+    },
+    {
+      "name": "генеральные грузы только на площадке и в причальной полосе",
+      "pass": true,
+      "detail": "вне зон: 0"
+    },
+    {
+      "name": "генеральные грузы не пересекаются с контейнерным двором",
+      "pass": true,
+      "detail": "пересечений: 0"
+    },
+    {
+      "name": "грузовые места стоят на грунте",
+      "pass": true,
+      "detail": "низ штабеля Y=1.94"
+    },
+    {
+      "name": "штабели грузов не выше 6 м",
+      "pass": true,
+      "detail": "верх штабеля Y=3.84"
+    },
+    {
+      "name": "краны генеральных грузов загружены",
+      "pass": true,
+      "detail": "4 крана, 2 модели, 49 вызовов"
+    },
+    {
+      "name": "портальные краны стоят на рельсовом пути",
+      "pass": true,
+      "detail": "(402; 93.2; 2.08) (548; 93.2; 2.08)"
+    },
+    {
+      "name": "мобильные краны опираются на плиту площадки",
+      "pass": true,
+      "detail": "(404; 400) (556; 396)"
+    },
+    {
+      "name": "краны не выходят за площадку",
+      "pass": true,
+      "detail": "вне площадки: "
+    },
+    {
+      "name": "подкрановый путь свободен от груза",
+      "pass": true,
+      "detail": "мест на рельсах: 0"
+    },
+    {
+      "name": "площадка генеральных грузов видна в исходном ракурсе",
+      "pass": true,
+      "detail": "x=1356, y=430 при 1669×939"
+    },
+    {
+      "name": "обе площадки и оба судна в кадре",
+      "pass": true,
+      "detail": "полоса 563,559; суда 319,659 / 708,679"
+    },
+    {
+      "name": "нет ошибок в консоли",
+      "pass": true,
+      "detail": ""
+    }
+  ]
+}

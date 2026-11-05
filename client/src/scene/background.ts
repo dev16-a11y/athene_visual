@@ -46,6 +46,12 @@ export function buildBackground(
     { x: 292, width: 104, height: 23 },
     { x: 418, width: 92, height: 33 },
     { x: 536, width: 110, height: 27 },
+    // Восточный фланг: за площадкой генеральных грузов ряд продолжается,
+    // иначе горизонт справа оставался пустой плитой.
+    { x: 660, width: 96, height: 25 },
+    { x: 764, width: 84, height: 31 },
+    { x: 866, width: 104, height: 22 },
+    { x: 946, width: 70, height: 28 },
   ];
   for (const row of warehouseRow) {
     add(
@@ -58,7 +64,7 @@ export function buildBackground(
           depth: 56,
           x: row.x,
           y: row.height / 2,
-          z: 392,
+          z: 660,
         },
         materials.warehouse,
         background,
@@ -75,7 +81,7 @@ export function buildBackground(
           depth: 58,
           x: row.x,
           y: row.height + 0.7,
-          z: 392,
+          z: 660,
         },
         materials.roof,
         background,
@@ -91,14 +97,14 @@ export function buildBackground(
       { height: 38, diameter: 17, tessellation: 14 },
       scene,
     );
-    silo.position.set(-430 + index * 21, 19, 330);
+    silo.position.set(-430 + index * 21, 19, 600);
     add(silo, materials.warehouse);
     const cap = MeshBuilder.CreateCylinder(
       `bg-silo-cap-${index}`,
       { height: 4, diameterTop: 4, diameterBottom: 17.4, tessellation: 14 },
       scene,
     );
-    cap.position.set(-430 + index * 21, 40, 330);
+    cap.position.set(-430 + index * 21, 40, 600);
     add(cap, materials.roof);
   }
 
@@ -109,7 +115,7 @@ export function buildBackground(
       { height: 14, diameter: 30, tessellation: 18 },
       scene,
     );
-    tank.position.set(300 + index * 40, 9, 330);
+    tank.position.set(300 + index * 40, 9, 600);
     add(tank, materials.quayWall);
   }
 
@@ -120,19 +126,18 @@ export function buildBackground(
       { height: 64, diameterTop: 5, diameterBottom: 8, tessellation: 12 },
       scene,
     );
-    chimney.position.set(-150 + index * 96, 32, 448);
+    chimney.position.set(-150 + index * 96, 32, 720);
     add(chimney, materials.warehouse);
   }
 
   // Портальные рамы и крановые эстакады между рядами складов.
-  for (let index = 0; index < 5; index++) {
-    const x = -420 + index * 210;
+  for (const x of [-420, -210, 0, 210, 420, 630, 840]) {
     for (const side of [-1, 1]) {
       add(
         box(
           scene,
           "bg-gantry-leg",
-          { width: 1.6, height: 26, depth: 1.6, x: x + side * 30, y: 15, z: 300 },
+          { width: 1.6, height: 26, depth: 1.6, x: x + side * 30, y: 15, z: 560 },
           materials.steelLight,
           background,
         ),
@@ -143,7 +148,7 @@ export function buildBackground(
       box(
         scene,
         "bg-gantry-beam",
-        { width: 66, height: 2.2, depth: 2, x, y: 28.4, z: 300 },
+        { width: 66, height: 2.2, depth: 2, x, y: 28.4, z: 560 },
         materials.steelLight,
         background,
       ),

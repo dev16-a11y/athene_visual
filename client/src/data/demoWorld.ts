@@ -47,13 +47,16 @@ const CRANE_SEEDS = [
   { id: "crane-06", name: "STS-06", x: 162, berth: "03" },
 ] as const;
 
+// Шесть площадок двора: два столбца (запад/восток) × три ряда по глубине.
+// Блок — 28 бейов × 20 рядов × 5 ярусов, это 5 600 TEU при полной загрузке
+// (см. CONTAINER_BLOCK в scene/containerYard.ts).
 const YARD_SEEDS = [
-  { id: "yard-a1", block: "A1", x: -140, z: 122, capacityTeu: 2100, fill: 0.62 },
-  { id: "yard-a2", block: "A2", x: -88, z: 122, capacityTeu: 1800, fill: 0.54 },
-  { id: "yard-b1", block: "B1", x: -140, z: 188, capacityTeu: 2100, fill: 0.71 },
-  { id: "yard-b2", block: "B2", x: -88, z: 188, capacityTeu: 1800, fill: 0.83 },
-  { id: "yard-c1", block: "C1", x: 84, z: 122, capacityTeu: 2400, fill: 0.66 },
-  { id: "yard-c2", block: "C2", x: 140, z: 188, capacityTeu: 2400, fill: 0.48 },
+  { id: "yard-a1", block: "A1", x: -165, z: 130, capacityTeu: 4800, fill: 0.62 },
+  { id: "yard-a2", block: "A2", x: 165, z: 130, capacityTeu: 4800, fill: 0.54 },
+  { id: "yard-b1", block: "B1", x: -165, z: 220, capacityTeu: 4800, fill: 0.71 },
+  { id: "yard-b2", block: "B2", x: 165, z: 220, capacityTeu: 4800, fill: 0.83 },
+  { id: "yard-c1", block: "C1", x: -165, z: 310, capacityTeu: 4800, fill: 0.66 },
+  { id: "yard-c2", block: "C2", x: 165, z: 310, capacityTeu: 4800, fill: 0.48 },
 ] as const;
 
 const TRUCK_SEEDS = [

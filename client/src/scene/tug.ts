@@ -1,4 +1,5 @@
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import type { Scene } from "@babylonjs/core/scene";
@@ -18,6 +19,10 @@ export function buildTug(
   tugRoot.parent = root;
   tugRoot.position.set(tug.position.x, 0, tug.position.z);
 
+  // Все параметрические меши — в одном списке: он удаляется при подмене на
+  // GLB, иначе нос, фальшборт, мачта, фендеры и труба остаются висеть рядом с
+  // моделью.
+  const base: Mesh[] = [];
   const hull = box(
     scene,
     "tug-hull",
@@ -25,19 +30,22 @@ export function buildTug(
     materials.tugHull,
     tugRoot,
   );
-  box(
-    scene,
-    "tug-bow",
-    { width: 7, height: 3.2, depth: 6.5, x: 13.4, y: 1.2, ry: 0.12 },
-    materials.tugHull,
-    tugRoot,
-  );
-  box(
-    scene,
-    "tug-deck",
-    { width: 23, height: 0.3, depth: 8, y: 2.9 },
-    materials.deck,
-    tugRoot,
+  base.push(hull);
+  base.push(
+    box(
+      scene,
+      "tug-bow",
+      { width: 7, height: 3.2, depth: 6.5, x: 13.4, y: 1.2, ry: 0.12 },
+      materials.tugHull,
+      tugRoot,
+    ),
+    box(
+      scene,
+      "tug-deck",
+      { width: 23, height: 0.3, depth: 8, y: 2.9 },
+      materials.deck,
+      tugRoot,
+    ),
   );
   const cabin = box(
     scene,
@@ -46,48 +54,55 @@ export function buildTug(
     materials.tugCabin,
     tugRoot,
   );
-  box(
-    scene,
-    "tug-windows",
-    { width: 9.2, height: 1.2, depth: 5.7, x: -2.4, y: 5.6 },
-    materials.glass,
-    tugRoot,
-  );
-  box(
-    scene,
-    "tug-roof",
-    { width: 9.4, height: 0.35, depth: 6, x: -2.4, y: 6.7 },
-    materials.white,
-    tugRoot,
-  );
-  cylinder(
-    scene,
-    "tug-mast",
-    0.25,
-    6,
-    { x: -2.4, y: 9.4, tessellation: 8 },
-    materials.steelLight,
-    tugRoot,
+  base.push(
+    cabin,
+    box(
+      scene,
+      "tug-windows",
+      { width: 9.2, height: 1.2, depth: 5.7, x: -2.4, y: 5.6 },
+      materials.glass,
+      tugRoot,
+    ),
+    box(
+      scene,
+      "tug-roof",
+      { width: 9.4, height: 0.35, depth: 6, x: -2.4, y: 6.7 },
+      materials.white,
+      tugRoot,
+    ),
+    cylinder(
+      scene,
+      "tug-mast",
+      0.25,
+      6,
+      { x: -2.4, y: 9.4, tessellation: 8 },
+      materials.steelLight,
+      tugRoot,
+    ),
   );
   for (const side of [-1, 1]) {
     for (const x of [8.5, 4, -0.5, -5]) {
-      cylinder(
-        scene,
-        "tug-fender",
-        1.3,
-        0.6,
-        { x, y: 2.2, z: side * 4.5, rx: Math.PI / 2, tessellation: 10 },
-        materials.funnel,
-        tugRoot,
+      base.push(
+        cylinder(
+          scene,
+          "tug-fender",
+          1.3,
+          0.6,
+          { x, y: 2.2, z: side * 4.5, rx: Math.PI / 2, tessellation: 10 },
+          materials.funnel,
+          tugRoot,
+        ),
       );
     }
   }
-  box(
-    scene,
-    "tug-stack",
-    { width: 1.8, height: 2.4, depth: 1.6, x: -6.3, y: 7.9 },
-    materials.hullLower,
-    tugRoot,
+  base.push(
+    box(
+      scene,
+      "tug-stack",
+      { width: 1.8, height: 2.4, depth: 1.6, x: -6.3, y: 7.9 },
+      materials.hullLower,
+      tugRoot,
+    ),
   );
 
   tagEntity(tugRoot, tug.id);
@@ -103,7 +118,7 @@ export function buildTug(
     id: tug.id,
     kind: "tug",
     root: tugRoot,
-    meshes: [hull, cabin],
+    meshes: base,
     selectionMeshes: [hull, cabin],
     markerY: 8,
     focusRadius: 140,

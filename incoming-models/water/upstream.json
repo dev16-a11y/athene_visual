@@ -1,6 +1,0 @@
-{
-  "repository": "https://github.com/Humpalumps/Ultra-Water",
-  "commit": "30ea65ecb0a66b137aa200d099965634bdd84d51",
-  "adaptedFile": "src/water/OceanSim.js",
-  "changes": "128\u00b2 cascades; native Babylon.js render passes; separate prototype surface material"
-}

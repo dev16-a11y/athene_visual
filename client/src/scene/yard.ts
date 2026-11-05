@@ -9,23 +9,14 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { YardBlock } from "../domain/types";
 import type { PortMaterials } from "./materials";
 import { box, castShadows, tagEntity } from "./helpers";
-import { mergeBoxes, type BoxInstance } from "./mergedBoxes";
+import { CONTAINER_BLOCK } from "./containerYard";
 import type { EntityVisual } from "./entityVisual";
 
-const BAYS = 3;
-const LANES = 9;
-const BAY_LENGTH = 12.7;
-const LANE_WIDTH = 2.58;
-const TIER_HEIGHT = 2.63;
-const CONTAINER_LENGTH = 12.19;
-const CONTAINER_HEIGHT = 2.59;
-const CONTAINER_DEPTH = 2.44;
-
-function hash(value: number): number {
-  const x = Math.sin(value * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-}
-
+/**
+ * Площадка контейнерного двора: покрытие, разметка и 3D-щит заполнения.
+ * Сами контейнеры строит `containerYard.ts` — они общие для всего двора
+ * (thin instances 45 шаблонов), поэтому в визуале блока их нет.
+ */
 function blockLabelMaterial(
   scene: Scene,
   block: string,
@@ -78,79 +69,44 @@ export function buildYard(
   const blockRoot = new TransformNode(`yard-${yard.block}`, scene);
   blockRoot.parent = root;
   blockRoot.position.set(yard.position.x, 2, yard.position.z);
-  const fill = Math.min(1, yard.occupiedTeu / Math.max(1, yard.capacityTeu));
+  const fill = yard.occupiedTeu / Math.max(1, yard.capacityTeu);
 
   const pad = box(
     scene,
     `yard-pad-${yard.block}`,
-    { width: 38, height: 0.12, depth: 28, y: 0.06 },
+    {
+      width: CONTAINER_BLOCK.length + 8,
+      height: 0.12,
+      depth: CONTAINER_BLOCK.depth + 8,
+      y: 0.06,
+    },
     materials.road,
     blockRoot,
   );
 
-  for (const cornerX of [-18.3, 18.3]) {
-    for (const cornerZ of [-13.3, 13.3]) {
+  // Угловая разметка — по фактическим габаритам площадки.
+  const halfLength = (CONTAINER_BLOCK.length + 8) / 2 - 1;
+  const halfDepth = (CONTAINER_BLOCK.depth + 8) / 2 - 1;
+  for (const cornerX of [-halfLength, halfLength]) {
+    for (const cornerZ of [-halfDepth, halfDepth]) {
       box(
         scene,
         `yard-mark-${yard.block}-${cornerX}-${cornerZ}`,
-        { width: 1.1, height: 0.02, depth: 0.22, x: cornerX, y: 0.14, z: cornerZ },
+        { width: 1.4, height: 0.02, depth: 0.24, x: cornerX, y: 0.14, z: cornerZ },
         materials.yellow,
         blockRoot,
       );
     }
   }
 
-  const buckets: BoxInstance[][] = [[], [], [], [], [], []];
-  for (let bay = 0; bay < BAYS; bay += 1) {
-    for (let lane = 0; lane < LANES; lane += 1) {
-      const seed = yard.block.charCodeAt(0) * 97 + yard.block.charCodeAt(1) * 13 + bay * 31 + lane * 7;
-      const occupied = hash(seed) < 0.18 + fill * 0.82;
-      if (!occupied) {
-        continue;
-      }
-      const height = 1 + Math.floor(hash(seed + 5) * (2 + fill * 3));
-      for (let tier = 0; tier < height; tier += 1) {
-        const color = Math.floor(hash(seed + tier * 11) * buckets.length);
-        buckets[color]?.push({
-          x: (bay - (BAYS - 1) / 2) * BAY_LENGTH,
-          y: 0.16 + CONTAINER_HEIGHT / 2 + tier * TIER_HEIGHT,
-          z: (lane - (LANES - 1) / 2) * LANE_WIDTH,
-          width: CONTAINER_LENGTH,
-          height: CONTAINER_HEIGHT,
-          depth: CONTAINER_DEPTH,
-          rotationY: 0,
-        });
-      }
-    }
-  }
-
-  const containerMeshes: Mesh[] = [];
-  buckets.forEach((boxes, index) => {
-    if (boxes.length === 0) {
-      return;
-    }
-    const material = materials.container[index];
-    if (!material) {
-      return;
-    }
-    const mesh = mergeBoxes(
-      scene,
-      `yard-containers-${yard.block}-${index}`,
-      boxes,
-      material,
-      blockRoot,
-    );
-    shadow.addShadowCaster(mesh, false);
-    containerMeshes.push(mesh);
-  });
-
   const label = MeshBuilder.CreatePlane(
     `yard-label-plane-${yard.block}`,
-    { width: 13, height: 4 },
+    { width: 16, height: 5 },
     scene,
   );
   label.parent = blockRoot;
-  label.position.set(0, 16, 0);
+  // Щит поднят над штабелем (пять ярусов × 2,9 м) и висит над проездом.
+  label.position.set(0, 24, 0);
   // USE_POSITION + разворот на 180° по X: лицевая сторона плоскости смотрит
   // в -Z, а billboard наводит на камеру +Z — иначе видна изнанка (зеркало).
   label.billboardMode = Mesh.BILLBOARDMODE_USE_POSITION;
@@ -167,15 +123,13 @@ export function buildYard(
     id: yard.id,
     kind: "yard",
     root: blockRoot,
-    meshes: containerMeshes,
+    meshes: [pad],
     selectionMeshes: [pad],
-    markerY: 5,
-    focusRadius: 175,
+    markerY: 18,
+    focusRadius: 330,
     update: (entity) => {
       const block = entity as YardBlock;
       const nextFill = Math.min(1, block.occupiedTeu / Math.max(1, block.capacityTeu));
-      labelState.texture
-        .getContext();
       const context = labelState.texture.getContext() as CanvasRenderingContext2D;
       context.clearRect(0, 0, 512, 160);
       context.fillStyle = "rgba(6, 22, 32, 0.72)";

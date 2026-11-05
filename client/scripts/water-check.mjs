@@ -55,6 +55,13 @@ try {
 
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(".dock-center", { timeout: 40_000 });
+  // Экран загрузки держится до готовности GLB-моделей: пока он на экране,
+  // скриншоты ракурсов поймали бы оверлей вместо воды.
+  await page
+    .waitForFunction(() => !document.querySelector(".loading-screen"), {
+      timeout: 30_000,
+    })
+    .catch(() => undefined);
   // Ждём, пока вода отчитается о готовности (FFT-проходы собираются асинхронно).
   await page
     .waitForFunction(

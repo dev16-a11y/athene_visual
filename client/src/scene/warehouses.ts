@@ -3,31 +3,69 @@ import type { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGener
 import type { Scene } from "@babylonjs/core/scene";
 import type { PortMaterials } from "./materials";
 import { box, castShadows } from "./helpers";
+import { swapInModel } from "./models";
 
 export interface WarehouseSpec {
   name: string;
   x: number;
+  /** Задняя линия застройки; у широких зданий сдвинута, чтобы не лезть в двор. */
+  z?: number;
   width: number;
   depth: number;
   height: number;
+  /** Ключ MODEL_MANIFEST: внешняя модель вместо параметрического корпуса. */
+  modelKey?: string;
 }
 
+/**
+ * Ряд складов вдоль тыловой границы терминала. Параметрические корпуса
+ * строятся всегда и служат fallback; поверх них подставляются внешние
+ * модели зданий (LOD1 — это фон в 270 м от камеры).
+ */
 export const WAREHOUSES: WarehouseSpec[] = [
-  { name: "Склад 1", x: -142, width: 64, depth: 38, height: 17 },
-  { name: "Склад 2", x: 0, width: 72, depth: 38, height: 19 },
-  { name: "Склад 3", x: 144, width: 62, depth: 38, height: 17 },
+  { name: "Склад 1", x: -300, z: 430, width: 64, depth: 38, height: 17, modelKey: "buildingKaispeicher" },
+  { name: "Склад 2", x: 0, z: 430, width: 72, depth: 38, height: 19, modelKey: "buildingRdm" },
+  // Steinwerder — низкий широкий комплекс: 130 × 97 м в модели, поэтому
+  // ставим его ближе к тыловой границе и без прежнего отступа по Z.
+  { name: "Склад 3", x: 300, z: 430, width: 62, depth: 38, height: 17, modelKey: "buildingSteinwerder" },
 ];
+
+/**
+ * Подменяет параметрический корпус здания внешней моделью. Промис нужен
+ * вызывающему, чтобы дождаться моделей до снятия экрана загрузки.
+ */
+async function replaceWithModel(
+  scene: Scene,
+  root: TransformNode,
+  shadow: ShadowGenerator,
+  key: string,
+  id: string,
+): Promise<void> {
+  const result = await swapInModel(scene, root, key, id, shadow);
+  if (!result) {
+    return;
+  }
+  const modelMeshes = new Set(result.meshes);
+  for (const mesh of root.getChildMeshes()) {
+    if (modelMeshes.has(mesh)) {
+      continue;
+    }
+    shadow.removeShadowCaster(mesh, false);
+    mesh.dispose();
+  }
+}
 
 export function buildWarehouses(
   scene: Scene,
   materials: PortMaterials,
   root: TransformNode,
   shadow: ShadowGenerator,
-): TransformNode {
+): Promise<void>[] {
+  const pending: Promise<void>[] = [];
   for (const spec of WAREHOUSES) {
     const warehouse = new TransformNode(`warehouse-${spec.x}`, scene);
     warehouse.parent = root;
-    warehouse.position.set(spec.x, 2, 274);
+    warehouse.position.set(spec.x, 2, spec.z ?? 274);
 
     box(
       scene,
@@ -88,6 +126,18 @@ export function buildWarehouses(
     }
 
     castShadows(shadow, warehouse);
+
+    if (spec.modelKey) {
+      pending.push(
+        replaceWithModel(
+          scene,
+          warehouse,
+          shadow,
+          spec.modelKey,
+          `warehouse-${spec.x}`,
+        ),
+      );
+    }
   }
-  return root;
+  return pending;
 }

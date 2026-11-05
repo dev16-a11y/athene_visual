@@ -26,3 +26,5 @@ server/.config/.dotnet-tools/
 
 # logs and screenshots produced during checks
 *.log
+
+/incoming-models/

@@ -1,4 +1,5 @@
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
@@ -27,6 +28,12 @@ export interface EntityModelSpec {
   rotationX?: number;
   /** Подъём над уровнем земли после нормализации (метры). */
   offsetY?: number;
+  /**
+   * Не пересчитывать высоту: у моделей с осмысленным началом координат
+   * (суда — ватерлиния по Y=0) днище должно остаться под водой, а не
+   * встать на её поверхность.
+   */
+  preserveOriginY?: boolean;
   /** Добавлять меши модели в тени. */
   shadow?: boolean;
   /**
@@ -38,9 +45,13 @@ export interface EntityModelSpec {
 
 export const MODEL_MANIFEST: Partial<Record<string, EntityModelSpec>> = {
   // Quaternius, CC0: https://poly.pizza/m/W2vMzztgIi
+  // Комплект «Афина — суда, комплект 1»: портовый буксир, 31 × 13 м,
+  // нос в +Z, Y=0 — ватерлиния.
   tug: {
-    url: "/models/tug-small-ship.glb",
-    fitLength: 30,
+    url: "/models/harbour-tug.glb",
+    fitLength: 31.2,
+    rotationY: Math.PI / 2,
+    preserveOriginY: true,
     shadow: true,
   },
   // Sketlux, CC0 (оставлено как запасной вариант, если новая модель недоступна).
@@ -51,12 +62,35 @@ export const MODEL_MANIFEST: Partial<Record<string, EntityModelSpec>> = {
     shadow: true,
   },
   // Проектные модели Smarttwin (входящие архивы, см. README).
-  // Aurora: 185 м по корпусу, длина модели по Z → поворот на 90°.
+  // «Афина — суда, комплект 1»: контейнеровоз 185 м, тот же корпус с новой
+  // дымовой трубой. Нос +Z, начало координат на ватерлинии (днище −7,3 м),
+  // поэтому высоту не пересчитываем — иначе судно всплывёт над водой.
   vessel: {
-    url: "/models/ship-aurora.glb",
-    fitLength: 190,
+    url: "/models/container-ship-athena.glb",
+    fitLength: 185,
     rotationY: Math.PI / 2,
-    offsetY: -2,
+    preserveOriginY: true,
+    shadow: true,
+  },
+  // Портовые здания (LOD1: 6,7 / 10,4 / 17,2 тыс. треугольников вместо
+  // 39,5 / 45,7 / 273,4 тыс. — это фоновый ряд в 270 м от камеры).
+  // Фасад моделей смотрит в +Z, в сцене лицевая сторона — к причалу (−Z).
+  buildingKaispeicher: {
+    url: "/models/buildings/kaispeicher-b.glb",
+    fitLength: 40,
+    rotationY: Math.PI,
+    shadow: true,
+  },
+  buildingRdm: {
+    url: "/models/buildings/rdm-loods.glb",
+    fitLength: 80,
+    rotationY: Math.PI,
+    shadow: true,
+  },
+  buildingSteinwerder: {
+    url: "/models/buildings/steinwerder.glb",
+    fitLength: 130,
+    rotationY: Math.PI,
     shadow: true,
   },
   // STS-кран: стрела уже направлена в −Z (морская сторона), как в сцене.
@@ -237,7 +271,8 @@ export function loadEntityModel(
         const exact = measure();
         inner.position.set(
           -((exact.minX + exact.maxX) / 2),
-          -exact.minY + (spec.offsetY ?? 0),
+          // preserveOriginY — модель сама знает, где у неё вода или земля.
+          (spec.preserveOriginY ? 0 : -exact.minY) + (spec.offsetY ?? 0),
           -((exact.minZ + exact.maxZ) / 2),
         );
         outer.rotation.y = spec.rotationY ?? 0;
@@ -261,6 +296,55 @@ export interface ModelSwapResult {
   meshes: AbstractMesh[];
 }
 /**
+ * Доводит центр габаритов клона до точки сущности.
+ *
+ * Нормализация в манифесте считает границы до постановки модели в иерархию
+ * сцены, поэтому у моделей со смещёнными узлами остаётся сдвиг: например,
+ * Steinwerder (два корпуса в разных узлах) уезжал от своего места на 19 м и
+ * залезал в контейнерный двор. Здесь центр считается по фактическим мировым
+ * границам и компенсируется в системе координат родителя — это работает и
+ * для повёрнутых сущностей (буксир разворачивается по эллипсу).
+ */
+function alignToRoot(clone: TransformNode, entityRoot: TransformNode): void {
+  const parent = clone.parent;
+  if (!parent) {
+    return;
+  }
+  clone.computeWorldMatrix(true);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const mesh of clone.getChildMeshes()) {
+    mesh.computeWorldMatrix(true);
+    mesh.refreshBoundingInfo(false, false);
+    const box = mesh.getBoundingInfo().boundingBox;
+    for (const corner of [box.minimumWorld, box.maximumWorld]) {
+      minX = Math.min(minX, corner.x);
+      maxX = Math.max(maxX, corner.x);
+      minZ = Math.min(minZ, corner.z);
+      maxZ = Math.max(maxZ, corner.z);
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+    return;
+  }
+  const target = entityRoot.getAbsolutePosition();
+  const delta = new Vector3(
+    target.x - (minX + maxX) / 2,
+    0,
+    target.z - (minZ + maxZ) / 2,
+  );
+  if (delta.lengthSquared() < 1e-6) {
+    return;
+  }
+  // Мировая поправка → локальная система родителя (у него может быть поворот).
+  const inverse = Matrix.Invert(parent.getWorldMatrix());
+  clone.position.addInPlace(Vector3.TransformNormal(delta, inverse));
+  clone.computeWorldMatrix(true);
+}
+
+/**
  * Подменяет визуал сущности внешней моделью: клонирует загруженный шаблон
  * внутрь entityRoot, переносит тени и метаданные. Вызывающий сам удаляет
  * временную параметрическую геометрию и обновляет список мешей визуала.
@@ -281,6 +365,7 @@ export async function swapInModel(
     return null;
   }
   clone.setEnabled(true);
+  alignToRoot(clone, entityRoot);
   const meshes: AbstractMesh[] = [];
   for (const mesh of clone.getChildMeshes()) {
     mesh.metadata = {

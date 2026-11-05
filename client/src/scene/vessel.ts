@@ -133,23 +133,36 @@ export function buildVessel(
 ): EntityVisual {
   const shipRoot = new TransformNode(`vessel-${vessel.name}`, scene);
   shipRoot.parent = root;
-  shipRoot.position.set(vessel.position.x, 0, vessel.position.z);
+  // Корпус шире причальной линии: стенка занимает z ∈ [−5, 0], а судно по
+  // данным стоит на z = −18 — борт оказывался внутри бетона. Отводим корпус
+  // от стенки на половину её толщины, не трогая данные о berth.
+  const shipZ = vessel.position.z - 4;
+  shipRoot.position.set(vessel.position.x, 0, shipZ);
 
   const hull = hullMesh(scene, materials, shipRoot);
-  const deck = box(
-    scene,
-    "deck",
-    { width: 150, height: 0.35, depth: 27, x: -8, y: DECK_Y + 0.05 },
-    materials.deck,
-    shipRoot,
-  );
-  for (let index = 0; index < 6; index += 1) {
+  // Все параметрические меши собираются в один список: именно он удаляется при
+  // подмене на GLB. Раньше в нём были только корпус, палуба и надстройка,
+  // поэтому труба, мачта, люки и полосы иллюминаторов оставались висеть за
+  // кормой после подмены.
+  const base: Mesh[] = [hull];
+  base.push(
     box(
       scene,
-      `hatch-${index}`,
-      { width: 17.5, height: 0.5, depth: 21, x: -64 + index * 23.5, y: DECK_Y + 0.35 },
+      "deck",
+      { width: 150, height: 0.35, depth: 27, x: -8, y: DECK_Y + 0.05 },
       materials.deck,
       shipRoot,
+    ),
+  );
+  for (let index = 0; index < 6; index += 1) {
+    base.push(
+      box(
+        scene,
+        `hatch-${index}`,
+        { width: 17.5, height: 0.5, depth: 21, x: -64 + index * 23.5, y: DECK_Y + 0.35 },
+        materials.deck,
+        shipRoot,
+      ),
     );
   }
 
@@ -167,43 +180,49 @@ export function buildVessel(
     materials.superstructure,
     shipRoot,
   );
-  box(
-    scene,
-    "bridge-windows",
-    { width: 25.4, height: 1.5, depth: 26.4, x: -80, y: DECK_Y + 23.8 },
-    materials.glass,
-    shipRoot,
-  );
-  box(
-    scene,
-    "funnel",
-    { width: 6.5, height: 9, depth: 5, x: -86, y: DECK_Y + 30.5 },
-    materials.funnel,
-    shipRoot,
-  );
-  box(
-    scene,
-    "funnel-cap",
-    { width: 6.8, height: 0.9, depth: 5.3, x: -86, y: DECK_Y + 35.2 },
-    materials.hullLower,
-    shipRoot,
-  );
-  cylinder(
-    scene,
-    "mast",
-    0.35,
-    14,
-    { x: -71, y: DECK_Y + 31, tessellation: 8 },
-    materials.steelLight,
-    shipRoot,
-  );
-  for (let index = 0; index < 4; index += 1) {
+  base.push(
+    superstructure,
+    bridge,
     box(
       scene,
-      `window-strip-${index}`,
-      { width: 0.3, height: 1.1, depth: 18, x: -70.4, y: DECK_Y + 5 + index * 4.2 },
+      "bridge-windows",
+      { width: 25.4, height: 1.5, depth: 26.4, x: -80, y: DECK_Y + 23.8 },
       materials.glass,
       shipRoot,
+    ),
+    box(
+      scene,
+      "funnel",
+      { width: 6.5, height: 9, depth: 5, x: -86, y: DECK_Y + 30.5 },
+      materials.funnel,
+      shipRoot,
+    ),
+    box(
+      scene,
+      "funnel-cap",
+      { width: 6.8, height: 0.9, depth: 5.3, x: -86, y: DECK_Y + 35.2 },
+      materials.hullLower,
+      shipRoot,
+    ),
+    cylinder(
+      scene,
+      "mast",
+      0.35,
+      14,
+      { x: -71, y: DECK_Y + 31, tessellation: 8 },
+      materials.steelLight,
+      shipRoot,
+    ),
+  );
+  for (let index = 0; index < 4; index += 1) {
+    base.push(
+      box(
+        scene,
+        `window-strip-${index}`,
+        { width: 0.3, height: 1.1, depth: 18, x: -70.4, y: DECK_Y + 5 + index * 4.2 },
+        materials.glass,
+        shipRoot,
+      ),
     );
   }
 
@@ -228,8 +247,8 @@ export function buildVessel(
     id: vessel.id,
     kind: "vessel",
     root: shipRoot,
-    meshes: [hull, deck, superstructure, bridge, ...cargo.meshes],
-    selectionMeshes: [hull, superstructure, bridge, deck],
+    meshes: [...base, ...cargo.meshes],
+    selectionMeshes: [hull, superstructure, bridge],
     markerY: 18,
     focusRadius: 235,
     labelTitle: vessel.name,
@@ -254,7 +273,7 @@ export function buildVessel(
         }
         // Список мешей визуала должен быть честным: swapModelAsync dispose'ит
         // именно его, и протухший список оставил бы живой груз под GLB.
-        visual.meshes = [hull, deck, superstructure, bridge, ...cargo.meshes];
+        visual.meshes = [...base, ...cargo.meshes];
       }
     },
     onModelSwap: () => {

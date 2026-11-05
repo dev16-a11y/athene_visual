@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { Scene } from "@babylonjs/core/scene";
 import type { PortMaterials } from "./materials";
 import { box, cylinder, plane } from "./helpers";
+import { GENERAL_CARGO_PAD } from "./generalCargo";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 export interface TerminalBuild {
@@ -61,28 +62,60 @@ export function buildTerminal(
   roots: { terminal: TransformNode; rail: TransformNode },
 ): TerminalBuild {
   const staticMeshes: Mesh[] = [];
+  // Плита суши под всей территорией: двор вырос, и «край мира» должен
+  // оставаться за забором, а не сразу за штабелями. Восточный фланг отдан
+  // генеральным грузам, поэтому суша шире контейнерного двора на 200 м.
   box(
     scene,
     "land-base",
-    { width: 1200, height: 4, depth: 600, x: 0, y: -0.08, z: 300 },
+    { width: 1700, height: 4, depth: 820, x: 100, y: -0.08, z: 410 },
     materials.yard,
+    roots.terminal,
+  );
+  // Служебная зона между причалом и двором: дорога, железная дорога, склады.
+  box(
+    scene,
+    "service-area",
+    { width: 1700, height: 4, depth: 480, x: 100, y: -0.06, z: 250 },
+    materials.road,
     roots.terminal,
   );
   const apron = box(
     scene,
     "quay-apron",
-    { width: 440, height: 4, depth: 40, x: 0, y: 0, z: 20 },
+    { width: 1400, height: 4, depth: 40, x: 250, y: 0, z: 20 },
     materials.apron,
     roots.terminal,
   );
   staticMeshes.push(apron);
 
+  // Открытая площадка генеральных грузов: своя плита, на 4 см ниже двора,
+  // чтобы стык с сушей не мерцал.
+  const cargoPad = box(
+    scene,
+    "cargo-pad",
+    {
+      width: GENERAL_CARGO_PAD.width,
+      depth: GENERAL_CARGO_PAD.depth,
+      height: 4,
+      x: GENERAL_CARGO_PAD.x + GENERAL_CARGO_PAD.width / 2,
+      y: GENERAL_CARGO_PAD.groundY - 2,
+      z: GENERAL_CARGO_PAD.z + GENERAL_CARGO_PAD.depth / 2,
+    },
+    materials.yard,
+    roots.terminal,
+  );
+  staticMeshes.push(cargoPad);
+
+
   // Верх площадки (y=2) копланарен апрону (тоже y=2): стыкуем без нахлёста,
-  // z от 40 — иначе полоса z∈[35,40] мерцала бы z-fighting'ом.
+  // z от 95 — иначе полоса между дорогой и двором мерцала бы z-fighting'ом.
+  // Плита двора уже, чем плита генеральных грузов начинается сразу за ней:
+  // нахлёст двух плит на разных уровнях дал бы мерцание стыка.
   const yardGround = box(
     scene,
     "yard-ground",
-    { width: 440, height: 4, depth: 260, x: 0, y: 0, z: 170 },
+    { width: 680, height: 4, depth: 250, x: 0, y: 0, z: 220 },
     materials.yard,
     roots.terminal,
   );
@@ -91,7 +124,7 @@ export function buildTerminal(
   const quayWall = box(
     scene,
     "quay-wall",
-    { width: 440, height: 9, depth: 5, x: 0, y: -2.5, z: -2.5 },
+    { width: 1700, height: 9, depth: 5, x: 100, y: -2.5, z: -2.5 },
     materials.quayWall,
     roots.terminal,
   );
@@ -100,14 +133,14 @@ export function buildTerminal(
   box(
     scene,
     "quay-safety-line",
-    { width: 438, height: 0.06, depth: 0.4, x: 0, y: 2.05, z: 1.1 },
+    { width: 1398, height: 0.06, depth: 0.4, x: 250, y: 2.05, z: 1.1 },
     materials.yellow,
     roots.terminal,
   );
   box(
     scene,
     "quay-safety-line-back",
-    { width: 438, height: 0.06, depth: 0.4, x: 0, y: 2.05, z: 33 },
+    { width: 1398, height: 0.06, depth: 0.4, x: 250, y: 2.05, z: 33 },
     materials.yellow,
     roots.terminal,
   );
@@ -118,14 +151,14 @@ export function buildTerminal(
   box(
     scene,
     "crane-rail-a",
-    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 3.5 },
+    { width: 884, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 3.5 },
     materials.rail,
     roots.terminal,
   );
   box(
     scene,
     "crane-rail-b",
-    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 20.5 },
+    { width: 884, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 20.5 },
     materials.rail,
     roots.terminal,
   );
@@ -133,7 +166,7 @@ export function buildTerminal(
   const road = box(
     scene,
     "port-road",
-    { width: 424, height: 0.1, depth: 18, x: 0, y: 2.02, z: 59 },
+    { width: 1140, height: 0.1, depth: 18, x: 250, y: 2.02, z: 59 },
     materials.road,
     roots.terminal,
   );
@@ -153,7 +186,7 @@ export function buildTerminal(
   dash.isPickable = false;
   dash.parent = roots.terminal;
   const dashMatrices: number[] = [];
-  for (let x = -206; x <= 206; x += 9) {
+  for (let x = -320; x <= 812; x += 9) {
     dashMatrices.push(...Matrix.Translation(x, 2.09, 59.1).asArray());
   }
   dash.thinInstanceSetBuffer("matrix", new Float32Array(dashMatrices), 16, true);
@@ -162,7 +195,7 @@ export function buildTerminal(
   const ballast = box(
     scene,
     "rail-ballast",
-    { width: 424, height: 0.24, depth: 6.4, x: 0, y: 2.06, z: 87 },
+    { width: 884, height: 0.24, depth: 6.4, x: 0, y: 2.06, z: 87 },
     materials.ballast,
     roots.rail,
   );
@@ -172,14 +205,14 @@ export function buildTerminal(
   box(
     scene,
     "rail-left",
-    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 86.24 },
+    { width: 884, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 86.24 },
     materials.rail,
     roots.rail,
   );
   box(
     scene,
     "rail-right",
-    { width: 424, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 87.76 },
+    { width: 884, height: 0.16, depth: 0.16, x: 0, y: 2.27, z: 87.76 },
     materials.rail,
     roots.rail,
   );
@@ -194,7 +227,7 @@ export function buildTerminal(
   sleeper.isPickable = false;
   sleeper.parent = roots.rail;
   const sleeperMatrices: number[] = [];
-  for (let x = -210; x <= 210; x += 1.7) {
+  for (let x = -440; x <= 440; x += 1.7) {
     sleeperMatrices.push(...Matrix.Translation(x, 2.19, 87).asArray());
   }
   sleeper.thinInstanceSetBuffer(
@@ -220,7 +253,7 @@ export function buildTerminal(
   bollard.isVisible = true;
   bollard.isPickable = false;
   const bollardMatrices: number[] = [];
-  for (let x = -208; x <= 208; x += 26) {
+  for (let x = -440; x <= 940; x += 26) {
     bollardMatrices.push(...Matrix.Translation(x, 2.9, 0.2).asArray());
   }
   bollard.thinInstanceSetBuffer(
@@ -231,7 +264,7 @@ export function buildTerminal(
   );
   bollard.alwaysSelectAsActiveMesh = true;
 
-  for (const x of [-190, -110, -30, 50, 130, 200]) {
+  for (const x of [-420, -336, -252, -168, -84, 0, 84, 168, 252, 336, 420, 504, 672, 840]) {
     const mast = cylinder(
       scene,
       `light-mast-${x}`,
@@ -258,12 +291,15 @@ export function buildTerminal(
     groundText(scene, `berth-${text}`, text, 30, 15, x, 27.5);
   }
 
-  groundText(scene, "terminal-mark", "TERMINAL 1", 70, 12, 20, 232, 2.07);
+  groundText(scene, "terminal-mark", "TERMINAL 1", 70, 12, 20, 384, 1.98);
+  // Разметка площадки генеральных грузов: между рядами длинномеров и блоком
+  // штучных грузов остаётся проезд, в него и ложится надпись.
+  groundText(scene, "cargo-mark", "GENERAL CARGO", 84, 12, 520, 300, 1.99);
 
   const fenceRail = box(
     scene,
     "fence-rail",
-    { width: 440, height: 0.12, depth: 0.12, x: 0, y: 3.6, z: 301 },
+    { width: 1700, height: 0.12, depth: 0.12, x: 100, y: 3.6, z: 520 },
     materials.steelLight,
     roots.terminal,
   );
@@ -278,8 +314,8 @@ export function buildTerminal(
   fencePost.isPickable = false;
   fencePost.parent = roots.terminal;
   const fenceMatrices: number[] = [];
-  for (let x = -218; x <= 218; x += 8) {
-    fenceMatrices.push(...Matrix.Translation(x, 3.05, 301).asArray());
+  for (let x = -746; x <= 946; x += 8) {
+    fenceMatrices.push(...Matrix.Translation(x, 3.05, 520).asArray());
   }
   fencePost.thinInstanceSetBuffer(
     "matrix",
@@ -308,6 +344,9 @@ export function createTerminalRoots(scene: Scene): {
   vessels: TransformNode;
   cranes: TransformNode;
   containers: TransformNode;
+  cargo: TransformNode;
+  /** Портальные и мобильные краны площадки генеральных грузов. */
+  cargoCranes: TransformNode;
   rail: TransformNode;
   trucks: TransformNode;
   warehouses: TransformNode;
@@ -317,6 +356,8 @@ export function createTerminalRoots(scene: Scene): {
     vessels: new TransformNode("root-vessels", scene),
     cranes: new TransformNode("root-cranes", scene),
     containers: new TransformNode("root-containers", scene),
+    cargo: new TransformNode("root-cargo", scene),
+    cargoCranes: new TransformNode("root-cargo-cranes", scene),
     rail: new TransformNode("root-rail", scene),
     trucks: new TransformNode("root-trucks", scene),
     warehouses: new TransformNode("root-warehouses", scene),

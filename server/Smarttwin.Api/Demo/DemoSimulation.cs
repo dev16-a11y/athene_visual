@@ -305,12 +305,14 @@ public sealed class DemoSimulation
     {
         var seeds = new (string Id, string Block, double X, double Z, int Capacity, double Fill)[]
         {
-            ("yard-a1", "A1", -140, 122, 2100, 0.62),
-            ("yard-a2", "A2", -88, 122, 1800, 0.54),
-            ("yard-b1", "B1", -140, 188, 2100, 0.71),
-            ("yard-b2", "B2", -88, 188, 1800, 0.83),
-            ("yard-c1", "C1", 84, 122, 2400, 0.66),
-            ("yard-c2", "C2", 140, 188, 2400, 0.48),
+            // Двор: два столбца × три ряда. Блок — 28 бейов × 20 рядов × 5 ярусов,
+            // то есть 5 600 TEU при полной загрузке (CONTAINER_BLOCK на клиенте).
+            ("yard-a1", "A1", -165, 130, 4800, 0.62),
+            ("yard-a2", "A2", 165, 130, 4800, 0.54),
+            ("yard-b1", "B1", -165, 220, 4800, 0.71),
+            ("yard-b2", "B2", 165, 220, 4800, 0.83),
+            ("yard-c1", "C1", -165, 310, 4800, 0.66),
+            ("yard-c2", "C2", 165, 310, 4800, 0.48),
         };
 
         var yards = new List<YardBlockDto>(seeds.Length);
