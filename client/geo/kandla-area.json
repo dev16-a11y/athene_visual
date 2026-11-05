@@ -1,0 +1,17 @@
+{
+  "name": "kandla",
+  "title": "Кандла — Deendayal Port",
+  "subtitle": "Kandla Creek, Gulf of Kutch, Gujarat, India",
+  "epsg": 32642,
+  "utmZone": 42,
+  "origin": { "lon": 70.22, "lat": 23.02 },
+  "scene": { "west": 70.199, "south": 22.9935, "east": 70.2505, "north": 23.0565 },
+  "fetch": { "west": 70.185, "south": 22.982, "east": 70.2645, "north": 23.062 },
+  "gridMetres": 1.5,
+  "simplifyMetres": 1.2,
+  "notes": [
+    "origin — только точка привязки локальной системы; это не граница порта и не конкретный причал.",
+    "scene — прямоугольник отображения; fetch — прямоугольник загрузки, шире сцены, чтобы сцена не обрывалась за причалами.",
+    "fetch и scene не являются юридической границей порта."
+  ]
+}

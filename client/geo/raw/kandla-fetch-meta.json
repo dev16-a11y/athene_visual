@@ -1,0 +1,19 @@
+{
+ "source": {
+  "kind": "overpass",
+  "endpoint": "https://overpass.private.coffee/api/interpreter"
+ },
+ "license": "OpenStreetMap contributors, ODbL 1.0",
+ "attribution": "© OpenStreetMap contributors",
+ "query": "[out:json][timeout:300];\n(\n  way[\"natural\"=\"coastline\"](22.982,70.185,23.068,70.2645);\n  way[\"natural\"=\"water\"](22.982,70.185,23.068,70.2645);\n  way[\"natural\"=\"wetland\"](22.982,70.185,23.068,70.2645);\n  way[\"waterway\"](22.982,70.185,23.068,70.2645);\n  way[\"man_made\"~\"^(quay|pier|breakwater|groyne|jetty|dock)$\"](22.982,70.185,23.068,70.2645);\n  way[\"landuse\"=\"salt_pond\"](22.982,70.185,23.068,70.2645);\n  way[\"natural\"=\"beach\"](22.982,70.185,23.068,70.2645);\n  relation[\"natural\"=\"water\"](22.982,70.185,23.068,70.2645);\n  relation[\"natural\"=\"wetland\"](22.982,70.185,23.068,70.2645);\n  relation[\"landuse\"=\"salt_pond\"](22.982,70.185,23.068,70.2645);\n  relation[\"man_made\"~\"^(quay|pier|breakwater)$\"](22.982,70.185,23.068,70.2645);\n);\nout geom;",
+ "bbox": {
+  "west": 70.185,
+  "south": 22.982,
+  "east": 70.2645,
+  "north": 23.068
+ },
+ "fetchedAt": "2026-11-05T11:15:42.368Z",
+ "dataTimestamp": "2026-07-15T15:22:01Z",
+ "generator": "Overpass API 0.7.62.11 87bfad18",
+ "elementCount": 27
+}
