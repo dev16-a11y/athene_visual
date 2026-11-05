@@ -277,3 +277,70 @@ describe("маршруты", () => {
     expect(headingFromDirection(0, -1)).toBeCloseTo(Math.PI / 2, 6);
   });
 });
+describe("EntityMotion: интервал до впереди идущей машины", () => {
+  const start = 2_000_000;
+  const speed = 11;
+
+  function loopMotion(): EntityMotion {
+    const motion = new EntityMotion("truck-follow", {
+      route: demoRoute("truck-loop"),
+    });
+    motion.seed(-200, 56, 0);
+    for (let index = 0; index < 40; index += 1) {
+      const time = start + index * 2_000;
+      const travelled = (speed * index * 2_000) / 1000;
+      motion.pushSample({
+        time,
+        x: -200 + (travelled % 400),
+        z: 56,
+        heading: 0,
+      });
+    }
+    return motion;
+  }
+
+  it("не заезжает за линию, даже если данные тянут вперёд", () => {
+    const motion = loopMotion();
+    const route = demoRoute("truck-loop");
+    motion.setLeadLimit(60);
+    const poses = run(motion, start + 40 * 2_000, 20_000);
+    const last = poses[poses.length - 1]!;
+    const s = route.project(last.x, last.z).s;
+    // Линия — 60 м от начала маршрута; допуск на один кадр подхода.
+    expect(s).toBeLessThanOrEqual(60.5);
+  });
+
+  it("останавливается плавно, без прыжка на последнем кадре", () => {
+    const motion = loopMotion();
+    motion.setLeadLimit(60);
+    const poses = run(motion, start + 40 * 2_000, 12_000);
+    const tail = steps(poses).slice(-120);
+    expect(Math.max(...tail)).toBeLessThan(0.4);
+  });
+
+  it("после снятия ограничения продолжает движение без рывка", () => {
+    const motion = new EntityMotion("truck-follow", {
+      route: demoRoute("truck-loop"),
+    });
+    motion.seed(-200, 56, 0);
+    // Данные идут всё время: ограничение снимаем на ходу, как когда
+    // впереди идущая машина уезжает.
+    for (let index = 0; index < 70; index += 1) {
+      const time = start + index * 2_000;
+      const travelled = (speed * index * 2_000) / 1000;
+      motion.pushSample({
+        time,
+        x: -200 + (travelled % 400),
+        z: 56,
+        heading: 0,
+      });
+    }
+    motion.setLeadLimit(60);
+    run(motion, start + 40 * 2_000, 10_000);
+    motion.setLeadLimit(null);
+    const poses = run(motion, start + 51 * 2_000, 4_000);
+    const tail = steps(poses).slice(-40);
+    expect(Math.max(...tail)).toBeLessThan(0.6);
+    expect(Math.min(...tail)).toBeGreaterThan(0);
+  });
+});

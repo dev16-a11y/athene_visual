@@ -42,7 +42,8 @@ import { computeProgress } from "../metrics/progress";
 import type { SceneLabel } from "./labels";
 import { createMaterials, type PortMaterials } from "./materials";
 import { buildTerminal, createTerminalRoots } from "./terminal";
-import { createWater, type WaterView } from "./water";
+import { createWaterSystem, type WaterInfo, type WaterSettings, type WaterSystem } from "./water/index";
+import { WATER_LEVEL } from "./water/config";
 import { swapInModel } from "./models";
 import { resolveModelKey } from "./models";
 import { buildYard } from "./yard";
@@ -58,6 +59,12 @@ import type { EntityVisual } from "./entityVisual";
 import { EntityMotion } from "./motion";
 import { runMotionSelfTest } from "./motionSelfTest";
 import { demoRoute } from "./routes";
+import {
+  planConvoy,
+  TRUCK_GAP,
+  TRUCK_LOOKAHEAD,
+  type ConvoyMember,
+} from "./traffic";
 
 const OUTLINE_COLOR = "#3fd3ff";
 
@@ -81,7 +88,6 @@ function markerDiameter(kind: EntityVisual["kind"]): number {
 export class PortScene {
   private readonly engine: PortEngine;
   private readonly backend: string;
-  private readonly isWebGPU: boolean;
   private readonly scene: Scene;
   private readonly camera: ArcRotateCamera;
   private readonly homePose: CameraPose;
@@ -89,7 +95,7 @@ export class PortScene {
   private readonly roots: ReturnType<typeof createTerminalRoots>;
   private readonly visuals = new Map<string, EntityVisual>();
   private shadow: ShadowGenerator;
-  private water: WaterView;
+  private water: WaterSystem;
   private readonly ring: Mesh;
   private readonly beam: Mesh;
   private readonly beamMaterial: StandardMaterial;
@@ -133,7 +139,6 @@ export class PortScene {
       (presetName ? CAMERA_PRESETS[presetName] : undefined) ?? HOME_CAMERA;
     this.engine = created.engine;
     this.backend = created.backend;
-    this.isWebGPU = created.isWebGPU;
     this.scene = new Scene(this.engine);
     if (import.meta.env.DEV) {
       (window as unknown as { __smarttwinScene?: Scene }).__smarttwinScene = this.scene;
@@ -161,6 +166,9 @@ export class PortScene {
             trainStats: () => unknown;
             focusEntity: (id: string) => unknown;
             railProbe: () => Promise<unknown>;
+            waterInfo: () => WaterInfo;
+            waterSettings: (partial: Partial<WaterSettings>) => WaterInfo;
+            waterLevel: () => number;
             trainSetX: (x: number) => unknown;
             scene: Scene;
           };
@@ -201,6 +209,12 @@ export class PortScene {
           return { focused: id };
         },
         railProbe: () => railTemplateInfo(this.scene),
+        waterInfo: (): WaterInfo => this.water.getInfo(),
+        waterSettings: (partial: Partial<WaterSettings>) => {
+          this.water.setSettings(partial);
+          return this.water.getInfo();
+        },
+        waterLevel: () => WATER_LEVEL,
         trainSetX: (x: number) => {
           this.visuals.get("train-01")?.consist?.debugSetX(x);
           return this.probeTrain();
@@ -309,11 +323,16 @@ export class PortScene {
       terminal: this.roots.terminal,
       rail: this.roots.rail,
     });
-    this.water = createWater(
-      this.scene,
-      QUALITY_SCALE.medium.waterSegments,
-      this.isWebGPU,
-    );
+    // Вода: FFT-каскады из прототипа акватории. Если движок не тянет
+    // плавающие render targets, модуль сам отдаёт прежнюю воду проекта.
+    this.water = createWaterSystem(this.scene, {
+      quality: store.getState().quality,
+      horizon: this.scene.fogColor.clone(),
+      zenith: Color3.FromHexString("#5d93bd").scale(1),
+    });
+    if (this.water.kind === "legacy") {
+      console.warn("[water] используется прежняя вода:", this.water.getInfo().fallbackReason);
+    }
     buildWarehouses(
       this.scene,
       this.materials,
@@ -818,7 +837,7 @@ export class PortScene {
     this.roots.rail.setEnabled(layers.rail);
     this.roots.trucks.setEnabled(layers.trucks);
     this.roots.warehouses.setEnabled(layers.warehouses);
-    this.water.mesh.setEnabled(layers.water);
+    this.water.setEnabled(layers.water);
   }
 
   private setQuality(quality: QualityLevel, force = false): void {
@@ -828,6 +847,8 @@ export class PortScene {
     this.quality = quality;
     const scale = QUALITY_SCALE[quality];
     this.engine.setHardwareScalingLevel(scale.hardwareScaling);
+    // Профиль воды: разрешение отражения и дальность мелкой ряби.
+    this.water.setQuality(quality);
     const sun = this.scene.getLightByName("sun") as DirectionalLight | null;
     if (sun) {
       this.shadow.dispose();
@@ -847,12 +868,17 @@ export class PortScene {
     const timeSeconds = now / 1000;
     this.renderedFrames += 1;
 
-    const cameraPosition = this.camera.globalPosition;
-    this.water.update(timeSeconds, cameraPosition);
+    // Вода обновляется до отрисовки кадра: сначала расчёт FFT, затем
+    // материал поверхности. Время — секунды, а не кадры.
+    this.water.update(deltaSeconds, this.camera);
 
     // Время данных: шкала сервера, приведённая к локальным часам. Движение
     // считается здесь, в цикле отрисовки, и не зависит от прихода сообщений.
     const dataNow = Date.now() + store.getState().clockOffsetMs;
+    // Машины на общем маршруте видят друг друга: собираем их дуговые
+    // координаты и ограничиваем подъезд к впереди идущей.
+    const convoy: ConvoyMember[] = [];
+    const truckRoute = demoRoute("truck-loop");
     for (const visual of this.visuals.values()) {
       if (visual.dynamic && visual.motion) {
         const pose = visual.motion.sample(dataNow);
@@ -861,8 +887,32 @@ export class PortScene {
         root.position.z = pose.z;
         root.position.y = visual.dynamic.baseY;
         this.applyHeading(root, pose.heading, deltaSeconds);
+        if (visual.kind === "truck") {
+          if (visual.motion.getMode() === "route") {
+            convoy.push({
+              id: visual.id,
+              s: truckRoute.project(pose.x, pose.z).s,
+            });
+          } else {
+            // Реальные данные: маршрута нет, правило интервала неприменимо.
+            visual.motion.setLeadLimit(null);
+          }
+        }
       }
       visual.tick?.(timeSeconds, deltaSeconds);
+    }
+    if (convoy.length > 0) {
+      const limits =
+        convoy.length > 1
+          ? planConvoy(truckRoute.length, convoy, {
+              gap: TRUCK_GAP,
+              lookahead: TRUCK_LOOKAHEAD,
+            })
+          : new Map<string, number>();
+      for (const member of convoy) {
+        const motion = this.visuals.get(member.id)?.motion;
+        motion?.setLeadLimit(limits.get(member.id) ?? null);
+      }
     }
 
     // Маркер выбора идёт за отрендеренной позицией, а не за данными.
@@ -1087,6 +1137,9 @@ export class PortScene {
     canvas?.removeEventListener("pointerdown", this.cancelFocusHandler);
     canvas?.removeEventListener("wheel", this.cancelFocusHandler);
     this.engine.stopRenderLoop();
+    // Свои render targets, текстуры и проходы вода убирает сама: scene.dispose
+    // не знает о кастомных цепочках расчёта волн.
+    this.water.dispose();
     this.scene.dispose();
     this.engine.dispose();
     this.visuals.clear();

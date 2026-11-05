@@ -183,20 +183,56 @@ public sealed class DemoSimulation
     {
         var seeds = new (string Id, double Offset, double Speed, string Status, bool Loaded)[]
         {
-            ("truck-01", 30, 12, "moving", true),
+            // Скорости намеренно разные: тягач с большей скоростью догоняет
+            // впереди идущего и встаёт ему в хвост (правило интервала считает
+            // клиент). Стоящая в полосе машина заблокировала бы всю петлю,
+            // поэтому все тягачи едут, а рабочие статусы не мешают движению.
+            ("truck-01", 30, 11, "moving", true),
             ("truck-02", 140, 10, "moving", true),
             ("truck-03", 250, 9, "moving", false),
             ("truck-04", 330, 11, "working", true),
-            ("truck-05", 390, 0, "idle", false),
+            ("truck-05", 390, 8, "moving", false),
         };
 
         const double minX = -200;
         const double maxX = 200;
         const double span = maxX - minX;
-        var trucks = new List<TruckDto>(seeds.Length);
-        foreach (var seed in seeds)
+        var lap = span * 2;
+
+        // Обгон на однополосной петле невозможен, поэтому быстрый тягач
+        // упирается в хвост более медленному. Считаем это без состояния:
+        // свободное положение каждого тягача ограничивается положением
+        // впереди идущего минус интервал. Порядок машин по петле сохраняется,
+        // поэтому минимум берётся по всем, кто впереди по кругу (для тех, кто
+        // формально уже «на следующем круге», добавляется длина петли).
+        // Результат — непрерывная детерминированная функция тика, поэтому
+        // историю можно восстановить тем же вызовом.
+        var free = new double[seeds.Length];
+        for (var index = 0; index < seeds.Length; index += 1)
         {
-            var travelled = seed.Offset + tick * seed.Speed;
+            free[index] = seeds[index].Offset + tick * seeds[index].Speed;
+        }
+
+        var held = new double[seeds.Length];
+        for (var index = 0; index < seeds.Length; index += 1)
+        {
+            var position = free[index];
+            for (var rank = 1; rank < seeds.Length; rank += 1)
+            {
+                var aheadIndex = (index + rank) % seeds.Length;
+                var aheadPosition = free[aheadIndex]
+                    + (aheadIndex <= index ? lap : 0)
+                    - TruckGap * rank;
+                position = Math.Min(position, aheadPosition);
+            }
+            held[index] = position;
+        }
+
+        var trucks = new List<TruckDto>(seeds.Length);
+        for (var index = 0; index < seeds.Length; index += 1)
+        {
+            var seed = seeds[index];
+            var travelled = held[index];
             var loop = (travelled % (span * 2) + span * 2) % (span * 2);
             var eastbound = loop < span;
             var x = eastbound ? minX + loop : maxX - (loop - span);
@@ -215,6 +251,13 @@ public sealed class DemoSimulation
         }
         return trucks;
     }
+
+    /// <summary>
+    /// Интервал между центрами тягачей: корма переднего (15,9 м) + нос заднего
+    /// (3,4 м) + запас. Запас покрывает сглаживание поворота в сцене и
+    /// линейную интерполяцию между тиками по 2 с.
+    /// </summary>
+    private const double TruckGap = 24.0;
 
     private List<TugDto> BuildTugs(long tick)
     {

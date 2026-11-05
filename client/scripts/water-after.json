@@ -1,0 +1,416 @@
+{
+  "tag": "after",
+  "url": "http://127.0.0.1:5173/",
+  "views": {
+    "port": {
+      "bands": {
+        "sky": {
+          "r": 208.01,
+          "g": 209.44,
+          "b": 208.84,
+          "lum": 209.1,
+          "std": 14.87,
+          "max": 217
+        },
+        "middle": {
+          "r": 121.37,
+          "g": 121.41,
+          "b": 119.23,
+          "lum": 121.24,
+          "std": 44.93,
+          "max": 238
+        },
+        "water": {
+          "r": 55.28,
+          "g": 77.61,
+          "b": 80.69,
+          "lum": 73.08,
+          "std": 30.99,
+          "max": 216.8
+        }
+      },
+      "engine": {
+        "fps": 59.9,
+        "drawCalls": 1237,
+        "meshes": 1277,
+        "backend": "WebGL 2",
+        "width": 1669,
+        "height": 939
+      },
+      "water": {
+        "kind": "fft",
+        "ready": true,
+        "fallbackReason": "",
+        "compileErrors": [],
+        "fps": 59.9,
+        "updateMs": 0.271,
+        "time": 2.399,
+        "paused": false,
+        "enabled": true,
+        "reflections": true,
+        "reflectionActive": true,
+        "reflectionSize": 768,
+        "reflectable": 321,
+        "foam": true,
+        "windSpeed": 5.8,
+        "waveGain": 0.24,
+        "quality": "medium",
+        "vertices": 27649,
+        "triangles": 55104
+      }
+    },
+    "water": {
+      "bands": {
+        "sky": {
+          "r": 142.83,
+          "g": 157.78,
+          "b": 161.81,
+          "lum": 154.89,
+          "std": 65.41,
+          "max": 217
+        },
+        "middle": {
+          "r": 75.33,
+          "g": 78.29,
+          "b": 80.25,
+          "lum": 77.8,
+          "std": 38.28,
+          "max": 216.1
+        },
+        "water": {
+          "r": 71.95,
+          "g": 99.45,
+          "b": 103.86,
+          "lum": 93.92,
+          "std": 25.21,
+          "max": 209.6
+        }
+      },
+      "engine": {
+        "fps": 60,
+        "drawCalls": 826,
+        "meshes": 1277,
+        "backend": "WebGL 2",
+        "width": 1669,
+        "height": 939
+      },
+      "water": {
+        "kind": "fft",
+        "ready": true,
+        "fallbackReason": "",
+        "compileErrors": [],
+        "fps": 60,
+        "updateMs": 0.388,
+        "time": 4.386,
+        "paused": false,
+        "enabled": true,
+        "reflections": true,
+        "reflectionActive": true,
+        "reflectionSize": 768,
+        "reflectable": 321,
+        "foam": true,
+        "windSpeed": 5.8,
+        "waveGain": 0.24,
+        "quality": "medium",
+        "vertices": 27649,
+        "triangles": 55104
+      }
+    },
+    "ship": {
+      "bands": {
+        "sky": {
+          "r": 138.69,
+          "g": 155.16,
+          "b": 156.78,
+          "lum": 151.78,
+          "std": 66.54,
+          "max": 217
+        },
+        "middle": {
+          "r": 104.6,
+          "g": 86.14,
+          "b": 65.71,
+          "lum": 88.59,
+          "std": 37.01,
+          "max": 206.5
+        },
+        "water": {
+          "r": 24.17,
+          "g": 42.26,
+          "b": 46.82,
+          "lum": 38.74,
+          "std": 16.37,
+          "max": 183.7
+        }
+      },
+      "engine": {
+        "fps": 60,
+        "drawCalls": 699,
+        "meshes": 1277,
+        "backend": "WebGL 2",
+        "width": 1669,
+        "height": 939
+      },
+      "water": {
+        "kind": "fft",
+        "ready": true,
+        "fallbackReason": "",
+        "compileErrors": [],
+        "fps": 60,
+        "updateMs": 0.319,
+        "time": 6.287,
+        "paused": false,
+        "enabled": true,
+        "reflections": true,
+        "reflectionActive": true,
+        "reflectionSize": 768,
+        "reflectable": 321,
+        "foam": true,
+        "windSpeed": 5.8,
+        "waveGain": 0.24,
+        "quality": "medium",
+        "vertices": 27649,
+        "triangles": 55104
+      }
+    },
+    "quay": {
+      "bands": {
+        "sky": {
+          "r": 115.03,
+          "g": 128.95,
+          "b": 131.7,
+          "lum": 126.19,
+          "std": 62.38,
+          "max": 225
+        },
+        "middle": {
+          "r": 77.97,
+          "g": 84.89,
+          "b": 84.82,
+          "lum": 83.41,
+          "std": 59,
+          "max": 206.7
+        },
+        "water": {
+          "r": 27.71,
+          "g": 47.48,
+          "b": 51.95,
+          "lum": 43.6,
+          "std": 38.03,
+          "max": 207.4
+        }
+      },
+      "engine": {
+        "fps": 59.9,
+        "drawCalls": 786,
+        "meshes": 1277,
+        "backend": "WebGL 2",
+        "width": 1669,
+        "height": 939
+      },
+      "water": {
+        "kind": "fft",
+        "ready": true,
+        "fallbackReason": "",
+        "compileErrors": [],
+        "fps": 59.9,
+        "updateMs": 0.351,
+        "time": 8.122,
+        "paused": false,
+        "enabled": true,
+        "reflections": true,
+        "reflectionActive": true,
+        "reflectionSize": 768,
+        "reflectable": 321,
+        "foam": true,
+        "windSpeed": 5.8,
+        "waveGain": 0.24,
+        "quality": "medium",
+        "vertices": 27649,
+        "triangles": 55104
+      }
+    },
+    "aerial": {
+      "bands": {
+        "sky": {
+          "r": 160.32,
+          "g": 165.83,
+          "b": 166.43,
+          "lum": 164.7,
+          "std": 19.28,
+          "max": 199.4
+        },
+        "middle": {
+          "r": 121.55,
+          "g": 138.53,
+          "b": 141.48,
+          "lum": 135.13,
+          "std": 5.53,
+          "max": 215.9
+        },
+        "water": {
+          "r": 109.77,
+          "g": 129.46,
+          "b": 132.69,
+          "lum": 125.51,
+          "std": 4.18,
+          "max": 190.2
+        }
+      },
+      "engine": {
+        "fps": 50.8,
+        "drawCalls": 1264,
+        "meshes": 1277,
+        "backend": "WebGL 2",
+        "width": 1669,
+        "height": 939
+      },
+      "water": {
+        "kind": "fft",
+        "ready": true,
+        "fallbackReason": "",
+        "compileErrors": [],
+        "fps": 50.8,
+        "updateMs": 0.209,
+        "time": 9.93,
+        "paused": false,
+        "enabled": true,
+        "reflections": true,
+        "reflectionActive": true,
+        "reflectionSize": 768,
+        "reflectable": 321,
+        "foam": true,
+        "windSpeed": 5.8,
+        "waveGain": 0.24,
+        "quality": "medium",
+        "vertices": 27649,
+        "triangles": 55104
+      }
+    }
+  },
+  "checks": {
+    "reflections": {
+      "enabled": {
+        "r": 64.4,
+        "g": 94.16,
+        "b": 98.71,
+        "lum": 88.16,
+        "std": 25.11,
+        "max": 210.6
+      },
+      "disabled": {
+        "r": 52.09,
+        "g": 88.54,
+        "b": 96.71,
+        "lum": 81.38,
+        "std": 22.25,
+        "max": 209.4
+      },
+      "passRegistered": true,
+      "passRemovedWhenOff": true,
+      "deltaLum": 6.78,
+      "deltaStd": 2.86
+    },
+    "foam": {
+      "deltaStd": 0.94
+    },
+    "waves": {
+      "calm": {
+        "r": 79.73,
+        "g": 105.35,
+        "b": 109.68,
+        "lum": 100.22,
+        "std": 23.81,
+        "max": 201.2
+      },
+      "rough": {
+        "r": 80.93,
+        "g": 111.24,
+        "b": 114.69,
+        "lum": 105.04,
+        "std": 30.6,
+        "max": 210.6
+      },
+      "calmInfo": {
+        "windSpeed": 3,
+        "waveGain": 0.16
+      },
+      "roughInfo": {
+        "windSpeed": 10.4,
+        "waveGain": 0.42
+      },
+      "deltaStd": 6.79
+    },
+    "pause": {
+      "timeFrozen": true,
+      "frozenA": 17.324,
+      "frozenB": 17.324,
+      "resumed": true
+    },
+    "resize": {
+      "small": {
+        "size": [
+          1113,
+          626
+        ],
+        "fps": 57.8
+      },
+      "large": {
+        "size": [
+          2226,
+          1252
+        ],
+        "fps": 59.1
+      }
+    },
+    "load": {
+      "fpsMin": 46.2,
+      "fpsAvg": 49.3,
+      "updateMsAvg": 0.202,
+      "updateMsMax": 0.232
+    },
+    "reload": {
+      "water": "fft",
+      "ready": true,
+      "fps": 20.2,
+      "errors": 0
+    }
+  },
+  "errors": [],
+  "info": {
+    "kind": "fft",
+    "ready": true,
+    "fallbackReason": "",
+    "compileErrors": [],
+    "fps": 14.2,
+    "updateMs": 0.64,
+    "time": 0.899,
+    "paused": false,
+    "enabled": true,
+    "reflections": true,
+    "reflectionActive": true,
+    "reflectionSize": 768,
+    "reflectable": 321,
+    "foam": true,
+    "windSpeed": 5.8,
+    "waveGain": 0.24,
+    "quality": "medium",
+    "vertices": 27649,
+    "triangles": 55104
+  },
+  "summary": [
+    "вода: fft, готовность true, шейдеры 0 ошибок",
+    "port   вода r=55.28 g=77.61 b=80.69 lum=73.08 std=30.99 fps=59.9",
+    "water  вода r=71.95 g=99.45 b=103.86 lum=93.92 std=25.21 fps=60",
+    "ship   вода r=24.17 g=42.26 b=46.82 lum=38.74 std=16.37 fps=60",
+    "quay   вода r=27.71 g=47.48 b=51.95 lum=43.6 std=38.03 fps=59.9",
+    "aerial вода r=109.77 g=129.46 b=132.69 lum=125.51 std=4.18 fps=50.8",
+    "PASS отражения меняют кадр (dLum=6.78 dStd=2.86)",
+    "PASS проход отражений снимается (true)",
+    "PASS ветер/амплитуда меняют рисунок (dStd=6.79)",
+    "PASS пауза замораживает волны (17.324 → 17.324)",
+    "PASS после паузы расчёт продолжается (true)",
+    "нагрузка: FPS min=46.2 avg=49.3, update=0.202 мс",
+    "PASS ошибок консоли нет (0)"
+  ]
+}

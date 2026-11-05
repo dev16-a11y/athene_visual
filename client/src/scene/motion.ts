@@ -201,7 +201,14 @@ export interface MotionStats {
   stale: boolean;
   /** Отклонение от маршрута, м (для режима маршрута). */
   routeOffset: number;
+  /** Сколько осталось до линии, за которую нельзя заезжать, м (null — нет). */
+  leadGap: number | null;
+  /** Машина упёрлась в впереди идущую и стоит. */
+  blocked: boolean;
 }
+
+/** Торможение перед впереди идущей машиной, м/с². */
+const FOLLOW_BRAKE = 1.8;
 
 const DEFAULTS = {
   delayMs: 320,
@@ -255,6 +262,19 @@ export class EntityMotion {
   private snapDistance = 45;
   /** После сброса шкалы не экстраполируем: показываем известное положение. */
   private snapPending = false;
+  /**
+   * Дуговая координата, дальше которой ехать нельзя: так машина держит
+   * интервал до впереди идущей. Считается снаружи (правило движения).
+   */
+  private leadLimitS: number | null = null;
+  private leadRoom = Number.POSITIVE_INFINITY;
+  private blocked = false;
+  /**
+   * Кадры после снятия ограничения, когда «перенос положения» запрещён:
+   * отставание накопилось из-за стоянки в очереди, и перескок вперёд был бы
+   * перескоком сквозь впереди идущую машину.
+   */
+  private leadGrace = 0;
 
   constructor(id: string, options: MotionOptions = {}) {
     this.id = id;
@@ -270,6 +290,15 @@ export class EntityMotion {
   setMode(mode: MotionMode): void {
     this.mode = mode;
   }
+
+  /**
+   * Граница, дальше которой ехать нельзя (интервал до впереди идущей машины).
+   * `null` — ограничение снято.
+   */
+  setLeadLimit(s: number | null): void {
+    this.leadLimitS = s;
+  }
+
 
   getMode(): MotionMode {
     return this.mode;
@@ -415,6 +444,16 @@ export class EntityMotion {
       }
     }
 
+    // Цель не может уходить за линию интервала: иначе накопленное отставание
+    // («данные уехали вперёд, пока машина стояла») превратилось бы в рывок,
+    // когда впереди идущая машина освободит дорогу.
+    if (this.leadLimitS !== null) {
+      const beyond = shortestAlongRoute(this.leadLimitS, targetS, route.length);
+      if (beyond > 0) {
+        targetS = this.leadLimitS;
+      }
+    }
+
     // Догоняем расчётное расстояние с запасом по скорости: поправка после
     // измерения (например, первое определение скорости) растворяется, а не
     // прыгает. На установившемся движении ограничитель не срабатывает.
@@ -422,7 +461,7 @@ export class EntityMotion {
       this.displayS = targetS;
     } else {
       const diff = shortestAlongRoute(this.displayS, targetS, route.length);
-      if (Math.abs(diff) > this.snapDistance) {
+      if (Math.abs(diff) > this.snapDistance && this.leadGrace === 0) {
         // Разрыв слишком велик (долгое отсутствие данных, переподключение):
         // показываем фактическое положение, а не ползём к нему минуту.
         this.displayS = targetS;
@@ -433,8 +472,39 @@ export class EntityMotion {
           30,
           Math.max(Math.abs(this.speed) * 1.6, Math.abs(diff) / 1.2),
         );
-        const limit = rate * this.frameGapSeconds;
+        let limit = rate * this.frameGapSeconds;
+        if (this.leadLimitS !== null) {
+          // Тормозная кривая до впереди идущей: скорость подхода падает по
+          // мере сокращения интервала, поэтому машина встаёт плавно, а не
+          // упирается в границу рывком.
+          const room = Math.max(
+            0,
+            shortestAlongRoute(this.displayS, this.leadLimitS, route.length),
+          );
+          this.leadRoom = room;
+          const approach = Math.sqrt(2 * FOLLOW_BRAKE * room);
+          limit = Math.min(limit, approach * this.frameGapSeconds);
+        }
         this.displayS += Math.sign(diff) * Math.min(Math.abs(diff), limit);
+      }
+    }
+    if (this.leadLimitS !== null) {
+      this.leadGrace = 180;
+      const room = shortestAlongRoute(this.displayS, this.leadLimitS, route.length);
+      this.leadRoom = room;
+      if (room < 0) {
+        // Перелёт возможен только на кадр (граница считается по прошлому
+        // кадру): возвращаемся к ней коротким шагом, без телепорта.
+        const step = Math.max(2, Math.abs(this.speed)) * this.frameGapSeconds;
+        this.displayS += Math.max(room, -step);
+        this.leadRoom = Math.max(0, room + step);
+      }
+      this.blocked = this.leadRoom <= 0.5;
+    } else {
+      this.leadRoom = Number.POSITIVE_INFINITY;
+      this.blocked = false;
+      if (this.leadGrace > 0) {
+        this.leadGrace -= 1;
       }
     }
     return route.at(this.displayS);
@@ -548,6 +618,11 @@ export class EntityMotion {
       sampleAgeMs: Number.isFinite(age) ? Math.round(age) : -1,
       stale: age > this.staleAfterMs,
       routeOffset: Number(projection.distance.toFixed(2)),
+      leadGap:
+        this.leadLimitS === null || !Number.isFinite(this.leadRoom)
+          ? null
+          : Number(Math.max(0, this.leadRoom).toFixed(2)),
+      blocked: this.blocked,
     };
   }
 }
