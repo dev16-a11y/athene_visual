@@ -16,7 +16,9 @@ const serverEnv = {
     "Host=localhost;Port=5433;Database=smarttwin;Username=smarttwin;Password=smarttwin",
   ASPNETCORE_URLS: "http://0.0.0.0:5080",
 };
-const appUrl = "http://127.0.0.1:5173/";
+// Демо-сцена включается параметром: по умолчанию проект открывает геооснову
+// Кандлы, а этот набор проверок относится к терминалу с телеметрией.
+const appUrl = process.env.APP_URL ?? "http://127.0.0.1:5173/?scene=demo";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const results = [];
 

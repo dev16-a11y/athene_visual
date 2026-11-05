@@ -208,6 +208,8 @@ export interface SurfaceFrame {
   time: number;
   /** Цель камеры по X: под неё подстраивается центр полярной сетки. */
   anchorX: number;
+  /** Цель камеры по Z: нужна только полному диску (рукав, а не открытое море). */
+  anchorZ?: number;
   sunDirection: Vector3;
   exposure: number;
   contrast: number;
@@ -225,6 +227,12 @@ export interface OceanSurfaceOptions {
   rippleDistance: number;
   /** Начальные настройки воды. */
   settings: WaterSettings;
+  /**
+   * Половина диска — море по одну сторону от линии причала (демо-терминал).
+   * Полный диск — когда вода окружает сцену со всех сторон (рукав Кандлы:
+   * акватория и слева и справа от береговой линии, плюс внутренние водоёмы).
+   */
+  coverage?: "half" | "full";
 }
 
 export interface OceanSurface {
@@ -240,15 +248,18 @@ export interface OceanSurface {
  * Полярная сетка-полудиск: центр на линии причала, дуга уходит в море.
  * Кольца растут геометрически, поэтому у берега шаг меньше метра, а на
  * горизонте — десятки метров; разрывов между участками нет, это одна сетка.
+ * Для полного диска (рукав, вода вокруг сцены) дуга замыкается в круг.
  */
 function buildGeometry(
   scene: Scene,
   ringGrowth: number,
   segments: number,
+  coverage: "half" | "full",
 ): Mesh {
   const positions: number[] = [0, 0, 0];
   const indices: number[] = [];
   const radii: number[] = [];
+  const sweep = coverage === "full" ? Math.PI * 2 : Math.PI;
 
   for (let radius = SURFACE_INNER_RADIUS; radius < SURFACE_OUTER_RADIUS; radius *= ringGrowth) {
     radii.push(radius);
@@ -257,7 +268,7 @@ function buildGeometry(
 
   for (const radius of radii) {
     for (let index = 0; index < segments; index += 1) {
-      const angle = (index / segments) * Math.PI;
+      const angle = (index / segments) * sweep;
       positions.push(Math.cos(angle) * radius, 0, -Math.sin(angle) * radius);
     }
   }
@@ -354,7 +365,8 @@ export function createOceanSurface(
   material.disableDepthWrite = false;
   material.zOffset = 0;
 
-  const mesh = buildGeometry(scene, SURFACE_RING_GROWTH, 192);
+  const coverage: "half" | "full" = options.coverage ?? "half";
+  const mesh = buildGeometry(scene, SURFACE_RING_GROWTH, 192, coverage);
   mesh.name = "water";
   mesh.material = material;
   mesh.position.y = WATER_LEVEL;
@@ -384,6 +396,7 @@ export function createOceanSurface(
 
   /** Привязка центра сетки к шагу колец: без неё вершины «дрожат» на ходу. */
   let anchor = Number.NaN;
+  let anchorZ = Number.NaN;
 
   return {
     mesh,
@@ -393,6 +406,15 @@ export function createOceanSurface(
       if (snapped !== anchor) {
         anchor = snapped;
         mesh.position.x = snapped;
+      }
+      // Полный диск ходит за камерой по обеим осям: под сценой нет «линии
+      // причала», к которой можно привязать центр.
+      if (coverage === "full") {
+        const snappedZ = Math.round((frame.anchorZ ?? 0) / 4) * 4;
+        if (snappedZ !== anchorZ) {
+          anchorZ = snappedZ;
+          mesh.position.z = snappedZ;
+        }
       }
       material.setFloat("uTime", frame.time);
       material.setFloat("uRippleDistance", rippleDistance);

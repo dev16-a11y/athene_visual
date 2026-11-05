@@ -6,6 +6,7 @@ import {
   TERMINAL_NAME,
 } from "../domain/constants";
 import type { LayerKey, QualityLevel } from "../domain/types";
+import { SCENE_MODE } from "../domain/sceneMode";
 import { store, useAppState } from "../state/store";
 import { formatDate, formatTime } from "../utils/format";
 import {
@@ -37,6 +38,13 @@ const LAYER_ORDER: LayerKey[] = [
 
 const QUALITY_ORDER: QualityLevel[] = ["low", "medium", "high"];
 
+/**
+ * Сцена-геооснова: у неё нет ни смен, ни поиска по судам, ни истории телеметрии,
+ * поэтому соответствующие элементы шапки не показываются — но сама шапка,
+ * качество графики и возврат камеры остаются на месте.
+ */
+const GEO_MODE = SCENE_MODE === "kandla";
+
 export function TopBar({
   nowMs,
   onEnterHistory,
@@ -65,19 +73,21 @@ export function TopBar({
     return () => window.removeEventListener("keydown", onKey);
   }, [layersOpen]);
 
-  const connectionLabel = history
-    ? "Архив"
-    : state.connection === "live"
-      ? state.dataSourceMode === "server"
-        ? "Онлайн"
-        : "Демо-поток"
-      : state.connection === "reconnecting"
-        ? "Переподключение"
-        : state.connection === "connecting"
-          ? "Подключение"
-          : state.connection === "demo"
-            ? "Демо-поток"
-            : "Нет связи";
+  const connectionLabel = GEO_MODE
+    ? "Геооснова"
+    : history
+      ? "Архив"
+      : state.connection === "live"
+        ? state.dataSourceMode === "server"
+          ? "Онлайн"
+          : "Демо-поток"
+        : state.connection === "reconnecting"
+          ? "Переподключение"
+          : state.connection === "connecting"
+            ? "Подключение"
+            : state.connection === "demo"
+              ? "Демо-поток"
+              : "Нет связи";
 
   return (
     <header className="topbar glass">
@@ -88,7 +98,7 @@ export function TopBar({
         <span className="brand-text">
           <span className="brand-name">SMARTTWIN</span>
           <span className="brand-sub">
-            {PORT_NAME} · {TERMINAL_NAME}
+            {GEO_MODE ? "Кандла · Deendayal Port, Гуджарат" : `${PORT_NAME} · ${TERMINAL_NAME}`}
           </span>
         </span>
       </div>
@@ -98,11 +108,12 @@ export function TopBar({
       <div className="area-select">
         <span className="area-label">Область обзора</span>
         <span className="area-value">
-          Терминал №1 · причалы 02–03
-          <ChevronIcon size={13} />
+          {GEO_MODE ? "Территория и акватория · OSM" : "Терминал №1 · причалы 02–03"}
+          {!GEO_MODE && <ChevronIcon size={13} />}
         </span>
       </div>
 
+      {!GEO_MODE && (
       <div className="mode-toggle" role="tablist" aria-label="Режим времени">
         <button
           type="button"
@@ -123,6 +134,7 @@ export function TopBar({
           История
         </button>
       </div>
+      )}
 
       <div className="clock">
         <span className="clock-time">
@@ -132,6 +144,7 @@ export function TopBar({
         <span className="clock-date">{formatDate(displayTime)}</span>
       </div>
 
+      {!GEO_MODE && (
       <div className="shift-select">
         <select
           aria-label="Смена"
@@ -143,7 +156,9 @@ export function TopBar({
           <option>Смена 3 · 20:00–24:00</option>
         </select>
       </div>
+      )}
 
+      {!GEO_MODE && (
       <label className="search">
         <SearchIcon size={14} />
         <input
@@ -153,8 +168,10 @@ export function TopBar({
           aria-label="Поиск"
         />
       </label>
+      )}
 
       <div className="topbar-actions">
+        {!GEO_MODE && (
         <div className="layer-wrap">
           <button
             type="button"
@@ -209,6 +226,7 @@ export function TopBar({
             </>
           )}
         </div>
+        )}
 
         <select
           className="quality-select"
@@ -250,25 +268,37 @@ export function TopBar({
           </button>
         )}
 
-        <div
-          className="demo-badge"
-          title="Все данные прототипа демонстрационные"
-        >
-          <span className="demo-dot" />
-          Демонстрационные данные
-        </div>
+        {GEO_MODE ? (
+          <div
+            className="demo-badge"
+            title="Геоданные: OpenStreetMap, лицензия ODbL 1.0"
+          >
+            <span className="demo-dot" />
+            © OpenStreetMap contributors
+          </div>
+        ) : (
+          <div
+            className="demo-badge"
+            title="Все данные прототипа демонстрационные"
+          >
+            <span className="demo-dot" />
+            Демонстрационные данные
+          </div>
+        )}
 
         <div
-          className={`connection connection-${history ? "history" : state.connection}`}
+          className={`connection connection-${GEO_MODE ? "geo" : history ? "history" : state.connection}`}
           title={
-            state.dataSourceMode === "server"
-              ? "Данные поступают с сервера SignalR"
-              : "Данные формирует локальный демонстрационный источник"
+            GEO_MODE
+              ? "Статическая географическая основа: телеметрия сцены не подключена"
+              : state.dataSourceMode === "server"
+                ? "Данные поступают с сервера SignalR"
+                : "Данные формирует локальный демонстрационный источник"
           }
         >
           <span className="connection-dot" />
           <span className="connection-label">{connectionLabel}</span>
-          {!history && state.dataSourceMode === "demo" && (
+          {!GEO_MODE && !history && state.dataSourceMode === "demo" && (
             <button
               type="button"
               className="retry-button"

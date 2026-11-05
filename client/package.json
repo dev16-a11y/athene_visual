@@ -17,6 +17,10 @@
     "verify:traffic": "node scripts/traffic-check.mjs",
     "verify:water": "node scripts/water-check.mjs",
     "verify:water:mirror": "node scripts/water-mirror.mjs",
+    "verify:kandla": "node scripts/kandla-check.mjs",
+    "geo:fetch": "node geo/scripts/fetch-kandla.mjs",
+    "geo:prepare": "node geo/scripts/prepare-kandla.mjs",
+    "geo:build": "node geo/scripts/fetch-kandla.mjs && node geo/scripts/prepare-kandla.mjs",
     "smoke:signalr": "node scripts/signalr-smoke.mjs",
     "screenshots": "node scripts/screenshot.mjs"
   },
@@ -25,6 +29,7 @@
     "@babylonjs/havok": "1.3.14",
     "@babylonjs/loaders": "8.56.2",
     "@microsoft/signalr": "9.0.19",
+    "earcut": "^3.2.4",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

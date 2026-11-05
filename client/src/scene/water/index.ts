@@ -82,6 +82,11 @@ export interface CreateWaterOptions {
   /** Начальные оттенки неба: из них же берётся очистка текстуры отражения. */
   horizon: Color3;
   zenith: Color3;
+  /**
+   * `half` — море по одну сторону от причала (демо-терминал). `full` — вода
+   * вокруг сцены (рукав Кандлы: акватория с обеих сторон берега).
+   */
+  coverage?: "half" | "full";
 }
 
 
@@ -107,6 +112,7 @@ export function createWaterSystem(
   const surface = createOceanSurface(scene, {
     rippleDistance: quality.rippleDistance,
     settings,
+    coverage: options.coverage ?? "half",
   });
 
   const reflection = createOceanReflection(scene, {
@@ -176,6 +182,7 @@ export function createWaterSystem(
         camera: camera.globalPosition,
         time: surfaceTime,
         anchorX: target.x,
+        anchorZ: target.z,
         sunDirection,
         exposure: imageProcessing.exposure,
         contrast: imageProcessing.contrast,

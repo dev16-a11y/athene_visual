@@ -3,8 +3,11 @@ import type { DataSourceHandlers } from "./data/types";
 import { DemoDataSource } from "./data/demoSource";
 import { ServerDataSource } from "./data/serverSource";
 import type { PortDataSource } from "./data/types";
+import type { DiagnosticsFrame } from "./domain/types";
 import { formatAge, getDataAgeMs, getFreshness } from "./metrics/freshness";
-import type { PortScene } from "./scene/PortScene";
+import { SCENE_MODE } from "./domain/sceneMode";
+import type { SceneHandle } from "./scene/kandla/KandlaScene";
+import type { KandlaInfo } from "./scene/kandla/KandlaScene";
 import type { SceneLabel } from "./scene/labels";
 import { store, useAppState } from "./state/store";
 import { BottomDock } from "./ui/BottomDock";
@@ -13,6 +16,7 @@ import { HistoryBar } from "./ui/HistoryBar";
 import { LeftRail } from "./ui/LeftRail";
 import { RightRail } from "./ui/RightRail";
 import { TopBar } from "./ui/TopBar";
+import { GeoCard } from "./ui/GeoCard";
 import { SceneLabels } from "./ui/SceneLabels";
 import { AlertIcon, LogoMark } from "./ui/icons";
 
@@ -53,6 +57,18 @@ function createHandlers(
 const MODEL_WAIT_MS = 15_000;
 
 /**
+ * Режим сцены. `demo` — прежний терминал с телеметрией, `kandla` — геооснова
+ * порта: у неё нет ни объектов, ни снимков, поэтому часть интерфейса,
+ * привязанная к телеметрии, в этом режиме не показывается.
+ */
+const GEO_MODE = SCENE_MODE === "kandla";
+
+/** Дополнительно к общему интерфейсу сцены: геопривязка нужна карточке. */
+type KandlaHandle = SceneHandle & {
+  getCameraGeo(): { lon: number; lat: number; radius: number; beta: number };
+};
+
+/**
  * Ожидание с потолком: если модели не пришли за отведённое время, сцену
  * всё равно показываем (на параметрике) — пустой экран хуже.
  */
@@ -79,7 +95,16 @@ export default function App() {
   // до этого в кадре параметрическая геометрия, которую видно ~1,5 с.
   const [sceneReady, setSceneReady] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<PortScene | null>(null);
+  const sceneRef = useRef<SceneHandle | null>(null);
+  const kandlaRef = useRef<KandlaHandle | null>(null);
+  const [kandlaInfo, setKandlaInfo] = useState<KandlaInfo | null>(null);
+  const [sceneError, setSceneError] = useState<string | null>(null);
+  const [cameraGeo, setCameraGeo] = useState<{
+    lon: number;
+    lat: number;
+    radius: number;
+    beta: number;
+  } | null>(null);
   const sourceRef = useRef<PortDataSource | null>(null);
   const generationRef = useRef(0);
 
@@ -123,6 +148,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Геооснова статична: подключать к ней поток телеметрии терминала нечего.
+    if (GEO_MODE) {
+      return;
+    }
     void connect();
     return () => {
       generationRef.current += 1;
@@ -154,59 +183,74 @@ export default function App() {
   const hasSnapshot = Boolean(state.liveSnapshot);
 
   useEffect(() => {
-    if (!hasSnapshot || !canvasRef.current || sceneRef.current) {
+    // Геооснове снимок не нужен: она собирается из локальных файлов, а не из
+    // телеметрии. Демо-сцена, как и раньше, ждёт первый снимок.
+    if ((!GEO_MODE && !hasSnapshot) || !canvasRef.current || sceneRef.current) {
       return;
     }
-    const snapshot = store.displaySnapshot();
-    if (!snapshot) {
-      return;
-    }
+    const canvas = canvasRef.current;
     let cancelled = false;
     // Сцена пересоздаётся — загрузка снова нужна, пока не встанут модели.
     setSceneReady(false);
-    void import("./scene/PortScene")
-      .then(async ({ PortScene }) => {
-        if (cancelled || !canvasRef.current || sceneRef.current) {
-          return;
-        }
-        // Создание асинхронное: WebGPU-движку нужно дождаться адаптера.
-        const scene = await PortScene.create(
-          canvasRef.current,
-          snapshot,
-          (frame) => {
-            // Кадры диагностики нужны только dev-панели: в production они
-            // ре-рендерили App каждые 500 мс без пользы.
-            if (import.meta.env.DEV) {
-              store.set({ diagnostics: frame });
-            }
-          },
-          (next) => setSceneLabels(next),
-        );
+
+    const onFrame = (frame: DiagnosticsFrame) => {
+      // Кадры диагностики нужны только dev-панели.
+      if (import.meta.env.DEV) {
+        store.set({ diagnostics: frame });
+      }
+    };
+    const onLabels = (next: SceneLabel[]) => setSceneLabels(next);
+
+    const created: Promise<SceneHandle> = GEO_MODE
+      ? import("./scene/kandla/KandlaScene").then(async ({ KandlaScene }) => {
+          const scene = await KandlaScene.create(canvas, {
+            onFrame,
+            onLabels,
+            onInfo: (info) => setKandlaInfo(info),
+          });
+          kandlaRef.current = scene as KandlaHandle;
+          return scene;
+        })
+      : import("./scene/PortScene").then(async ({ PortScene }) => {
+          const snapshot = store.displaySnapshot();
+          if (!snapshot) {
+            throw new Error("нет снимка для демонстрационной сцены");
+          }
+          return PortScene.create(canvas, snapshot, onFrame, onLabels);
+        });
+
+    void created
+      .then(async (scene) => {
         if (cancelled) {
           scene.dispose();
+          kandlaRef.current = null;
           return;
         }
         sceneRef.current = scene;
         // Модели догружаются параллельно: ждём их, пока держится загрузка.
-        await withTimeout(scene.whenModelsReady(), MODEL_WAIT_MS);
+        await withTimeout(scene.whenModelsReady(), GEO_MODE ? 8_000 : MODEL_WAIT_MS);
         if (!cancelled && sceneRef.current === scene) {
           setSceneReady(true);
         }
       })
       .catch((error) => {
-        // Ошибка загрузки чанка (сеть, деплой): без catch обещание
-        // повисало unhandled, а экран — навсегда в «Подключении…».
-        console.error("[app] не удалось загрузить модуль сцены:", error);
-        // Сцену не покажем, но интерфейс с данными — да: пусть виден статус,
+        // Ошибка загрузки чанка (сеть, деплой) или отсутствие подготовленных
+        // геоданных: без catch обещание повисало unhandled, а экран — навсегда
+        // в «Подключении…».
+        console.error("[app] не удалось собрать сцену:", error);
+        // Сцену не покажем, но интерфейс — да: пусть виден статус и причина,
         // а не бесконечный экран загрузки.
         if (!cancelled) {
+          setSceneError(error instanceof Error ? error.message : String(error));
           setSceneReady(true);
         }
       });
+
     return () => {
       cancelled = true;
       sceneRef.current?.dispose();
       sceneRef.current = null;
+      kandlaRef.current = null;
     };
   }, [hasSnapshot]);
 
@@ -215,6 +259,21 @@ export default function App() {
       sceneRef.current.setSnapshot(displaySnapshot);
     }
   }, [displaySnapshot]);
+
+  // Координаты центра обзора: у геоосновы это единственная «живая» величина,
+  // и её видно в карточке — так проверяется привязка камеры к карте.
+  useEffect(() => {
+    if (!GEO_MODE) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const handle = kandlaRef.current;
+      if (handle) {
+        setCameraGeo(handle.getCameraGeo());
+      }
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const enterHistory = useCallback(async () => {
     const source = sourceRef.current;
@@ -307,21 +366,27 @@ export default function App() {
       <canvas
         ref={canvasRef}
         className="scene-canvas"
-        aria-label="Трёхмерная сцена контейнерного терминала"
+        aria-label={
+          GEO_MODE
+            ? "Трёхмерная географическая основа порта Кандла"
+            : "Трёхмерная сцена контейнерного терминала"
+        }
       />
       <div className="scene-vignette" aria-hidden="true" />
       {displaySnapshot && (
         <SceneLabels labels={sceneLabels} selectedId={state.selectedId} />
       )}
 
-      {(!displaySnapshot || !sceneReady) && (
+      {((!GEO_MODE && !displaySnapshot) || !sceneReady) && (
         <div className="loading-screen">
           <span className="loading-logo">
             <LogoMark size={54} />
           </span>
           <span className="loading-title">SMARTTWIN</span>
           <span className="loading-sub">
-            Подключение к источнику данных и подготовка сцены…
+            {GEO_MODE
+              ? "Загрузка территории и акватории Кандлы из OpenStreetMap…"
+              : "Подключение к источнику данных и подготовка сцены…"}
           </span>
         </div>
       )}
@@ -334,7 +399,14 @@ export default function App() {
           onRetryConnection={() => void connect()}
         />
 
-        {displaySnapshot && (
+        {/* Геооснова: вместо панелей телеметрии — карточка источника и
+            координат обзора. Демо-панели привязаны к снимку порта, поэтому в
+            этом режиме их нет. */}
+        {GEO_MODE && (
+          <GeoCard info={kandlaInfo} camera={cameraGeo} error={sceneError} />
+        )}
+
+        {!GEO_MODE && displaySnapshot && (
           <LeftRail
             snapshot={displaySnapshot}
             selectedId={state.selectedId}
@@ -343,7 +415,7 @@ export default function App() {
           />
         )}
 
-        {displaySnapshot && (
+        {!GEO_MODE && displaySnapshot && (
           <RightRail
             snapshot={displaySnapshot}
             selectedId={state.selectedId}
@@ -354,7 +426,7 @@ export default function App() {
           />
         )}
 
-        {displaySnapshot && (
+        {!GEO_MODE && displaySnapshot && (
           <BottomDock
             snapshot={displaySnapshot}
             historyMode={state.viewMode === "history"}
