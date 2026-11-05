@@ -416,7 +416,8 @@ export function buildCrane(
   let targetTrolleyZ = -30;
   let targetSpreaderY = 22;
   let currentSpreaderY = 26;
-  const phase = crane.id.charCodeAt(crane.id.length - 1) * 0.8;
+  // Пустой id даёт NaN от charCodeAt — тележка улетала бы в NaN.
+  const phase = (crane.id.charCodeAt(crane.id.length - 1) || 0) * 0.8;
   hangingContainer.isVisible = crane.spreaderLoad === 1;
   // После подмены GLB-моделью параметрические тележка, спредер и маяк
   // отключаются: анимировать удалённую геометрию нельзя.

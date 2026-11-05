@@ -109,7 +109,7 @@ void main(void) {
 `;
 
 // WebGPU не компилирует GLSL, поэтому для него держим эквивалентный WGSL.
-// Формулы повторяют GLSL-версию один в один: поменяли одну — поправьте обе.
+// Формулы повторяют GLSL-версию; поменяли одну — поправьте обе.
 const VERTEX_WGSL = `
 attribute position: vec3<f32>;
 uniform world: mat4x4<f32>;
@@ -162,7 +162,7 @@ fn valueNoise(p: vec2<f32>) -> f32 {
   let b: f32 = hash(i + vec2<f32>(1.0, 0.0));
   let c: f32 = hash(i + vec2<f32>(0.0, 1.0));
   let d: f32 = hash(i + vec2<f32>(1.0, 1.0));
-  return mix(mix(a, b, w.x), mix(c, d, w.y), w.y);
+  return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);
 }
 
 @fragment
@@ -215,7 +215,6 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
 export interface WaterView {
   mesh: Mesh;
   update: (time: number, cameraPosition: Vector3) => void;
-  setSegments: (segments: number) => void;
 }
 
 let shaderRegistered = false;
@@ -276,10 +275,6 @@ export function createWater(
       material.setFloat("uTime", time);
       material.setVector3("uCameraPosition", cameraPosition);
       material.setVector3("uSunDir", sun);
-    },
-    setSegments() {
-      // Subdivision is fixed for the lifetime of the plane to avoid rebuilding
-      // geometry while the user changes quality.
     },
   };
 }

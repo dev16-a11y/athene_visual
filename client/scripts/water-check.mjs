@@ -292,7 +292,19 @@ try {
     await page.waitForTimeout(600);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForSelector(".dock-center", { timeout: 40_000 });
-    await page.waitForTimeout(4000);
+    // Ждём готовности воды, а не фиксированные 4 с: сразу после reload
+    // сцена ещё прогревается (шейдеры FFT, GLB), и скользящий FPS
+    // оказывался занижен и несравним между прогонами.
+    await page
+      .waitForFunction(
+        () => {
+          const info = window.__smarttwinDebug?.waterInfo?.();
+          return Boolean(info) && (info.ready === true || info.kind === "legacy");
+        },
+        { timeout: 45_000 },
+      )
+      .catch(() => errors.push("вода не отчиталась о готовности после reload за 45 с"));
+    await page.waitForTimeout(5000);
     const reloaded = await probe();
     results.checks.reload = {
       water: reloaded.water?.kind ?? null,

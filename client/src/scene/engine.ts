@@ -16,8 +16,6 @@ export type PortEngine = Engine | WebGPUEngine;
 export interface CreatedEngine {
   engine: PortEngine;
   backend: "WebGPU" | "WebGL 2" | "WebGL 1";
-  /** WebGPU требует WGSL-шейдеров: GLSL в этом режиме не компилируется. */
-  isWebGPU: boolean;
 }
 
 /**
@@ -43,7 +41,7 @@ export async function createPortEngine(
         stencil: true,
       });
       await webgpu.initAsync();
-      return { engine: webgpu, backend: "WebGPU", isWebGPU: true };
+      return { engine: webgpu, backend: "WebGPU" };
     } catch (error) {
       console.warn(
         "[engine] WebGPU недоступен, работаем на WebGL 2:",
@@ -52,6 +50,11 @@ export async function createPortEngine(
     }
   }
 
+  // preserveDrawingBuffer нужен проверочным скриптам (verify:water,
+  // verify:motion): они читают пиксели канваса через drawImage/getImageData,
+  // а без флага после отрисовки буфер уже очищен. Рантайм приложения его
+  // не использует, но стоимостью в один flush пренебрегаем ради честных
+  // пиксельных замеров.
   const engine = new Engine(canvas, true, {
     preserveDrawingBuffer: true,
     stencil: true,
@@ -60,6 +63,5 @@ export async function createPortEngine(
   return {
     engine,
     backend: engine.webGLVersion >= 2 ? "WebGL 2" : "WebGL 1",
-    isWebGPU: false,
   };
 }

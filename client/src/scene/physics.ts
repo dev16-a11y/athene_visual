@@ -49,10 +49,13 @@ export async function enablePhysics(scene: Scene): Promise<PhysicsHandle> {
 export function addGroundCollider(scene: Scene, y = 2): Mesh {
   const ground = MeshBuilder.CreateGround(
     "physics-ground",
-    { width: 900, height: 900, subdivisions: 1 },
+    { width: 900, height: 600, subdivisions: 1 },
     scene,
   );
-  ground.position.y = y;
+  // Пол — только по берегу (z ≥ 0, как и сама площадка терминала):
+  // над акваторией тестовые тела честно падают в воду, а не висят
+  // на невидимой плоскости.
+  ground.position.set(0, y, 300);
   ground.isVisible = false;
   ground.isPickable = false;
   ground.metadata = { skipShadow: true };

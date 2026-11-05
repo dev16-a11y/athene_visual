@@ -71,6 +71,9 @@ function isReflectable(mesh: AbstractMesh, water: AbstractMesh): boolean {
   }
   // Отсечение по габаритам в мировых координатах: дальние склады и цеха за
   // терминалом в воде не видны, а в проходе отражений стоили бы полный кадр.
+  // По Z правило «весь меш или ничего» — осознанное упрощение (см. README);
+  // по X меш отсекается только если он целиком вне окна: проверка одного
+  // min-угла роняла бы протянутый издалека меш вместе с видимой частью.
   const box = mesh.getBoundingInfo().boundingBox;
   if (box.maximumWorld.z > REFLECTION_MAX_LAND_Z) {
     return false;
@@ -78,7 +81,10 @@ function isReflectable(mesh: AbstractMesh, water: AbstractMesh): boolean {
   if (box.minimumWorld.z < -REFLECTION_MAX_SEA_DEPTH) {
     return false;
   }
-  if (Math.abs(box.minimumWorld.x) > REFLECTION_MAX_HALF_WIDTH) {
+  if (
+    box.maximumWorld.x < -REFLECTION_MAX_HALF_WIDTH ||
+    box.minimumWorld.x > REFLECTION_MAX_HALF_WIDTH
+  ) {
     return false;
   }
   return true;
@@ -101,7 +107,7 @@ export function createOceanReflection(
    * отражённых пикселей. Смещение задано относительно фактического уровня воды,
    * а не константой демо-сцены.
    */
-  mirror.mirrorPlane = new Plane(0, -1, 0, -(WATER_LEVEL - 0.02));
+  mirror.mirrorPlane = new Plane(0, -1, 0, WATER_LEVEL - 0.02);
 
   /**
    * Отражение рисуется без тональной компрессии и гаммы: материал воды

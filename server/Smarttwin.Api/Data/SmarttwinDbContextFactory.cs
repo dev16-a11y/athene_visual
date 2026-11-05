@@ -9,7 +9,9 @@ public sealed class SmarttwinDbContextFactory : IDesignTimeDbContextFactory<Smar
     {
         var connectionString =
             Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
-            ?? "Host=localhost;Port=5432;Database=smarttwin;Username=smarttwin;Password=smarttwin";
+            // Фолбэк синхронен с .env/docker-compose: локальный Postgres
+            // слушает на хосте 5433 (в контейнере — 5432).
+            ?? "Host=localhost;Port=5433;Database=smarttwin;Username=smarttwin;Password=smarttwin";
 
         var options = new DbContextOptionsBuilder<SmarttwinDbContext>()
             .UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite())

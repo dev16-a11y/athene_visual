@@ -113,16 +113,16 @@ const analysis = await page.evaluate(
       z: m[2] * water.x + m[6] * water.y + m[10] * water.z + m[14],
       w: m[3] * water.x + m[7] * water.y + m[11] * water.z + m[15],
     };
+    // Пиксели считаем без квантования NDC: округление до одного знака
+    // до умножения на ширину давало погрешность до ~80 px при радиусе
+    // окна 110 px — проверка могла ложно срабатывать.
     const project =
       clip.w > 1e-6
         ? {
-            x: Number(((clip.x / clip.w) * 0.5 + 0.5).toFixed(1)) * (width / 1),
-            y: Number(((0.5 - (clip.y / clip.w) * 0.5) * height).toFixed(1)),
+            x: (clip.x / clip.w) * 0.5 * width + width / 2,
+            y: (0.5 - (clip.y / clip.w) * 0.5) * height,
           }
         : null;
-    if (project) {
-      project.x = Number(project.x.toFixed(1));
-    }
 
     // Центр масс пикселей, которые появились после установки маркера.
     let sumX = 0;

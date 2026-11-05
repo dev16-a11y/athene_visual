@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LAYER_LABELS,
   QUALITY_LABELS,
@@ -45,7 +45,6 @@ export function TopBar({
 }: TopBarProps) {
   const state = useAppState();
   const [layersOpen, setLayersOpen] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
   const history = state.viewMode === "history";
   const displayTime =
@@ -156,7 +155,7 @@ export function TopBar({
       </label>
 
       <div className="topbar-actions">
-        <div className="layer-wrap" ref={popoverRef}>
+        <div className="layer-wrap">
           <button
             type="button"
             className={layersOpen ? "icon-button active" : "icon-button"}
@@ -276,7 +275,7 @@ export function TopBar({
               onClick={onRetryConnection}
               title="Повторить подключение к серверу"
             >
-              сервер?
+              Сервер
             </button>
           )}
         </div>

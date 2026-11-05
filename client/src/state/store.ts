@@ -100,16 +100,16 @@ class AppStore {
   }
 
   applySnapshot(snapshot: Snapshot): void {
-    this.set({
-      liveSnapshot: acceptSnapshot(this.state.liveSnapshot, snapshot),
-      clockOffsetMs: Date.parse(snapshot.serverTime) - Date.now(),
-    });
+    this.set({ liveSnapshot: acceptSnapshot(this.state.liveSnapshot, snapshot) });
+    // Часы и по снимкам ведём через syncClock: прямое присваивание на
+    // каждом reconnect/resume скачком сдвигало шкалу времени движения.
+    this.syncClock(snapshot.serverTime);
   }
 
   /**
-   * Смещение часов сервера обновляем и по разностям: иначе оно остаётся
-   * снимком момента подключения и уезжает от реального. Сглаживаем, чтобы
-   * дрожание доставки не превращалось в дрожание шкалы времени.
+   * Смещение часов сервера обновляем и по разностям, и по снимкам: иначе
+   * оно остаётся снимком момента подключения и уезжает от реального.
+   * Сглаживаем, чтобы дрожание доставки не превращалось в дрожание шкалы.
    */
   private syncClock(serverTime: string | undefined): void {
     if (!serverTime) {

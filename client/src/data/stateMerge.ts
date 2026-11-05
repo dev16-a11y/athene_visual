@@ -60,6 +60,12 @@ function mergeById<T extends { id: string }>(
   return [...map.values()];
 }
 
+/**
+ * Каркас снимка под «delta раньше снимка»: применяется до первого полного
+ * снимка. mode здесь — формальная заполненность поля, а не источник данных;
+ * warehouses пусты, потому что StateDelta склады не переносит — они
+ * появляются только с первым полным снимком.
+ */
 function emptySnapshot(delta: StateDelta): Snapshot {
   return {
     mode: "demo",

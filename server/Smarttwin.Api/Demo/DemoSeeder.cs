@@ -11,6 +11,11 @@ public sealed class DemoSeeder(
 {
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
+        // Демо-режим безусловно вытирает все три таблицы. Если когда-нибудь
+        // сюда подключат реальную БД — это предупреждение должно быть видно
+        // в логах раньше, чем данные пропадут молча.
+        logger.LogWarning(
+            "DemoSeeder: вытираю state_snapshots, port_objects, warnings перед посевом демо-данных");
         await db.StateSnapshots.ExecuteDeleteAsync(cancellationToken);
         await db.PortObjects.ExecuteDeleteAsync(cancellationToken);
         await db.Warnings.ExecuteDeleteAsync(cancellationToken);

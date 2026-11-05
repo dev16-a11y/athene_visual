@@ -10,7 +10,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 var connectionString =
     builder.Configuration.GetConnectionString("Postgres")
-    ?? "Host=localhost;Port=5432;Database=smarttwin;Username=smarttwin;Password=smarttwin";
+    // Фолбэк синхронен с .env/docker-compose: локальный Postgres слушает
+    // на хосте 5433 (в контейнере — 5432).
+    ?? "Host=localhost;Port=5433;Database=smarttwin;Username=smarttwin;Password=smarttwin";
 
 builder.Services.AddDbContext<SmarttwinDbContext>(options =>
     options.UseNpgsql(

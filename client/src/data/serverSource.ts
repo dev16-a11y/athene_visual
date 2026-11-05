@@ -16,6 +16,9 @@ export class ServerDataSource implements PortDataSource {
   private connection: HubConnection | null = null;
   private stopped = false;
   private paused = false;
+  /** Выдал ли источник хотя бы один снимок: стоп не выдавшего данных
+   * источника не должен портить статус нового подключения. */
+  private delivered = false;
 
   constructor(private readonly handlers: DataSourceHandlers) {}
 
@@ -40,15 +43,22 @@ export class ServerDataSource implements PortDataSource {
           window.clearTimeout(snapshotTimer);
           snapshotTimer = null;
         }
-        this.handlers.onSnapshot(snapshot);
-        this.handlers.onConnection("live");
+        this.delivered = true;
+        // На паузе (просмотр истории) полный снимок снес бы архивное
+        // состояние; после stop() события источника больше не актуальны.
+        if (!this.paused && !this.stopped) {
+          this.handlers.onSnapshot(snapshot);
+        }
+        if (!this.stopped) {
+          this.handlers.onConnection("live");
+        }
         resolve();
       });
     });
     firstSnapshot.catch(() => undefined);
 
     connection.on("delta", (delta: StateDelta) => {
-      if (this.paused) {
+      if (this.paused || this.stopped) {
         return;
       }
       this.handlers.onDelta(delta);
@@ -67,10 +77,18 @@ export class ServerDataSource implements PortDataSource {
       }
       try {
         const snapshot = await getSnapshot();
-        this.handlers.onSnapshot(snapshot);
+        if (this.stopped) {
+          return;
+        }
+        this.delivered = true;
+        if (!this.paused) {
+          this.handlers.onSnapshot(snapshot);
+        }
         this.handlers.onConnection("live");
       } catch {
-        this.handlers.onConnection("reconnecting");
+        if (!this.stopped) {
+          this.handlers.onConnection("reconnecting");
+        }
       }
     });
 
@@ -100,7 +118,12 @@ export class ServerDataSource implements PortDataSource {
       void this.connection.stop().catch(() => undefined);
       this.connection = null;
     }
-    this.handlers.onConnection("offline");
+    // «offline» говорим только для источника, который реально отдавал
+    // данные: гонка «Переподключить» во время pending start() иначе
+    // сбрасывает «connecting» нового источника ложным «Соединение потеряно».
+    if (this.delivered) {
+      this.handlers.onConnection("offline");
+    }
   }
 
   setPaused(paused: boolean): void {
@@ -108,6 +131,9 @@ export class ServerDataSource implements PortDataSource {
     if (!paused && this.connection?.state === HubConnectionState.Connected) {
       void getSnapshot()
         .then((snapshot) => {
+          if (this.stopped || this.paused) {
+            return;
+          }
           this.handlers.onSnapshot(snapshot);
           this.handlers.onConnection("live");
         })

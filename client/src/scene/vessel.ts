@@ -224,7 +224,7 @@ export function buildVessel(
   // параметрического cargo недопустима (меши уже удалены).
   const swapState = { active: false };
 
-  return {
+  const visual: EntityVisual = {
     id: vessel.id,
     kind: "vessel",
     root: shipRoot,
@@ -252,11 +252,15 @@ export function buildVessel(
         for (const mesh of cargo.meshes) {
           mesh.metadata = { ...(mesh.metadata ?? {}), entityId: current.id, shadowCaster: true };
         }
+        // Список мешей визуала должен быть честным: swapModelAsync dispose'ит
+        // именно его, и протухший список оставил бы живой груз под GLB.
+        visual.meshes = [hull, deck, superstructure, bridge, ...cargo.meshes];
       }
     },
     onModelSwap: () => {
       swapState.active = true;
     },
   };
+  return visual;
 }
 

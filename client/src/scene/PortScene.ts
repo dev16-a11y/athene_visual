@@ -103,6 +103,8 @@ export class PortScene {
   private readonly instrumentation: SceneInstrumentation;
   private readonly resizeObserver: ResizeObserver;
   private pointerObserver: Observer<PointerInfo> | null = null;
+  private contextLost: { remove: () => void } | null = null;
+  private contextRestored: { remove: () => void } | null = null;
   private unsubscribe: (() => void) | null = null;
   private snapshot: Snapshot | null = null;
   private selectedId: string | null = null;
@@ -140,6 +142,17 @@ export class PortScene {
     this.engine = created.engine;
     this.backend = created.backend;
     this.scene = new Scene(this.engine);
+    // Потеря GPU-контекста (сброс драйвера, сон устройства) — не крах сцены:
+    // Babylon перевыделяет свои ресурсы при восстановлении, но без сигнала
+    // пользователь видит замерший кадр без объяснений. После восстановления
+    // FFT-вода пересчитывает спектр: содержимое float-текстур теряется.
+    this.contextLost = this.engine.onContextLostObservable.add(() => {
+      console.warn("[scene] контекст GPU потерян, ждём восстановления");
+    });
+    this.contextRestored = this.engine.onContextRestoredObservable.add(() => {
+      console.info("[scene] контекст GPU восстановлен");
+      this.water.resync?.();
+    });
     if (import.meta.env.DEV) {
       (window as unknown as { __smarttwinScene?: Scene }).__smarttwinScene = this.scene;
       (
@@ -394,7 +407,6 @@ export class PortScene {
     }
   }
 
-  /** Состояние движения для отладки и замеров в браузере. */
   /**
    * Состояние движения для отладки и замеров в браузере. Только читает
    * отрендеренную трансформацию: вызов `sample()` здесь сдвигал бы маршрут.
@@ -505,7 +517,8 @@ export class PortScene {
     };
   }
 
-  private async setupPhysics(): Promise<void> {    const handle = await enablePhysics(this.scene);
+  private async setupPhysics(): Promise<void> {
+    const handle = await enablePhysics(this.scene);
     addGroundCollider(this.scene, 2);
     console.info(
       `[physics] ${handle.pluginName}: тел ${countBodies(this.scene)}`,
@@ -1131,6 +1144,10 @@ export class PortScene {
       this.scene.onPointerObservable.remove(this.pointerObserver);
       this.pointerObserver = null;
     }
+    this.contextLost?.remove();
+    this.contextLost = null;
+    this.contextRestored?.remove();
+    this.contextRestored = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
     const canvas = this.scene.getEngine().getRenderingCanvas();

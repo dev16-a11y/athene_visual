@@ -69,6 +69,11 @@ export interface WaterSystem {
   getSettings(): WaterSettings;
   getQuality(): WaterQuality;
   getInfo(): WaterInfo;
+  /**
+   * Пересчёт с нуля после восстановления потерянного GPU-контекста.
+   * Есть только у FFT-воды: у прежней воды нет собственных render targets.
+   */
+  resync?(): void;
   dispose(): void;
 }
 
@@ -119,6 +124,7 @@ export function createWaterSystem(
   let layerEnabled = true;
   let ready = false;
   let updateMs = 0;
+  let surfaceTime = 0;
   let currentQuality = options.quality;
   let horizon = options.horizon.clone();
   let zenith = options.zenith.clone();
@@ -144,22 +150,31 @@ export function createWaterSystem(
       // Ограничение шага: после возврата во вкладку dt бывает в секунды, и
       // без среза волны прыгнули бы вперёд.
       const dt = Math.max(0, Math.min(dtSeconds, 0.05));
+      // В кадре перехода в готовность шаг уже сделан выше — второй не нужен,
+      // иначе время волн прыгает на 2·dt и пауза нарушается в этом кадре.
+      const wasReady = ready;
       if (!ready) {
         ready = sim.update(dt);
         if (!ready) {
           return;
         }
         applyVisibility();
-      }
-      if (!settings.paused) {
+      } else if (!settings.paused) {
         sim.update(dt);
+      }
+      // Отдельное монотонное время для декоративных фаз поверхности (облака,
+      // рябь, пена): sim.time заворачивается на OCEAN_LOOP_SECONDS — для FFT
+      // это бесшовно, но непериодический шум с заворотом прыгает. Это время
+      // не заворачивается и стоит на паузе вместе с симуляцией.
+      if (!settings.paused && wasReady) {
+        surfaceTime += dt;
       }
       bindCascadeTextures(surface.material, sim.displacement, sim.slope);
 
       const target = (camera as ArcRotateCamera).target ?? camera.globalPosition;
       surface.update({
         camera: camera.globalPosition,
-        time: sim.time,
+        time: surfaceTime,
         anchorX: target.x,
         sunDirection,
         exposure: imageProcessing.exposure,
@@ -238,6 +253,11 @@ export function createWaterSystem(
       };
     },
 
+    /** Спектр и каскады пересчитываются с нуля на следующем шаге. */
+    resync(): void {
+      sim.resync();
+    },
+
     dispose(): void {
       reflection.dispose();
       surface.dispose();
@@ -270,7 +290,11 @@ function createLegacyWaterSystem(
         return;
       }
       const started = performance.now();
-      time += Math.max(0, Math.min(dtSeconds, 0.05));
+      // Прежняя вода тоже уважает паузу и темп: кнопка «волны стоят»
+      // должна работать и на fallback-пути (WebGL1/WebGPU).
+      if (!settings.paused) {
+        time += Math.max(0, Math.min(dtSeconds, 0.05)) * settings.timeScale;
+      }
       view.update(time, camera.globalPosition);
       const spent = performance.now() - started;
       updateMs = updateMs === 0 ? spent : updateMs * 0.9 + spent * 0.1;
@@ -296,7 +320,7 @@ function createLegacyWaterSystem(
         fps: Number(scene.getEngine().getFps().toFixed(1)),
         updateMs: Number(updateMs.toFixed(3)),
         time: Number(time.toFixed(3)),
-        paused: false,
+        paused: settings.paused,
         enabled: layerEnabled,
         reflections: false,
         reflectionActive: false,

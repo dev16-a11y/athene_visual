@@ -121,7 +121,15 @@ interface LoadedTemplate {
   root: TransformNode;
 }
 
-const templateCache = new Map<string, Promise<LoadedTemplate | null>>();
+/**
+ * Кэш шаблонов привязан к сцене: клон создаётся через getScene() шаблона,
+ * и шаблон из уже уничтоженной сцены (StrictMode монтирует сцену дважды)
+ * клонировался бы в неё же. WeakMap очищается сборщиком вместе со сценой.
+ */
+const templateCache = new WeakMap<
+  Scene,
+  Map<string, Promise<LoadedTemplate | null>>
+>();
 
 /**
  * Загружает GLB-модель по спецификации и нормализует её:
@@ -134,10 +142,15 @@ export function loadEntityModel(
   key: string,
 ): Promise<LoadedTemplate | null> {
   const spec = MODEL_MANIFEST[key];
-  if (!spec) {
+  if (!spec || scene.isDisposed) {
     return Promise.resolve(null);
   }
-  let promise = templateCache.get(key);
+  let sceneCache = templateCache.get(scene);
+  if (!sceneCache) {
+    sceneCache = new Map();
+    templateCache.set(scene, sceneCache);
+  }
+  let promise = sceneCache.get(key);
   if (!promise) {
     promise = SceneLoader.ImportMeshAsync("", spec.url, undefined, scene)
       .then((result) => {
@@ -238,7 +251,7 @@ export function loadEntityModel(
         );
         return null;
       });
-    templateCache.set(key, promise);
+    sceneCache.set(key, promise);
   }
   return promise;
 }

@@ -20,17 +20,20 @@ public sealed class SimulationWorker(
                 var result = simulation.Advance();
                 if (result is not null)
                 {
-                    await hub.Clients.All.SendAsync(
-                        "delta",
-                        result.Delta,
-                        stoppingToken);
-
+                    // Сначала запись, потом рассылка: при сбое Postgres
+                    // клиенты отстают вместе с БД, а не обгоняют её —
+                    // иначе в /api/state/history появлялись дырки.
                     using var scope = scopeFactory.CreateScope();
                     var repository =
                         scope.ServiceProvider.GetRequiredService<SnapshotRepository>();
                     await repository.PersistAsync(
                         result.Snapshot,
                         cancellationToken: stoppingToken);
+
+                    await hub.Clients.All.SendAsync(
+                        "delta",
+                        result.Delta,
+                        stoppingToken);
 
                     logger.LogDebug(
                         "Broadcast sequence {Sequence} at {ServerTime:O}",

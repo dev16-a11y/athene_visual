@@ -337,7 +337,6 @@ async function importTemplate(
     axleCentreY !== undefined ? axleCentreY - spec.wheelRadius : 0.18;
   const rollSign = calibrateRoll(templateRoot, axleMeshes, railHead, yaw, scene);
 
-  holder.setEnabled(false);
   templateRoot.setEnabled(false);
 
   return {

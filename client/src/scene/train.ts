@@ -8,6 +8,7 @@ import { box, tagEntity } from "./helpers";
 import type { EntityVisual } from "./entityVisual";
 import {
   DEFAULT_CONSIST,
+  RAIL_VEHICLES,
   TrainConsist,
   loadConsistTemplates,
   type ConsistPlacement,
@@ -125,20 +126,24 @@ function buildPlaceholder(
   parent: TransformNode,
   shadow: ShadowGenerator,
 ): Mesh[] {
-  const offsets = vehicleOffsets(
-    DEFAULT_CONSIST.map((key) => (key === "shunter" ? 17.52 : 15)),
-  );
+  // Габариты — из паспортов моделей (RAIL_VEHICLES): болванка занимает то же
+  // место вдоль пути, что и будущий состав, без «сжатых» контейнерных
+  // платформ (реальный pitch 26.72, а не 15).
+  const specs = DEFAULT_CONSIST.map((key) => RAIL_VEHICLES[key]);
+  const offsets = vehicleOffsets(specs.map((spec) => spec.pitch));
   const meshes: Mesh[] = [];
   offsets.forEach((offset, index) => {
+    const spec = specs[index];
+    const height = index === 0 ? 4.3 : 3.6;
     const mesh = box(
       scene,
       `train-stub-${index}`,
       {
-        width: index === 0 ? 17.2 : 14.4,
-        height: index === 0 ? 4.3 : 3.6,
+        width: spec ? spec.frontHalf + spec.rearHalf : 14.4,
+        height,
         depth: 3.1,
         x: -offset,
-        y: (index === 0 ? 4.3 : 3.6) / 2,
+        y: height / 2,
       },
       index === 0 ? materials.steelBlueDark : materials.steelLight,
       parent,

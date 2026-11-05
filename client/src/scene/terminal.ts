@@ -77,10 +77,12 @@ export function buildTerminal(
   );
   staticMeshes.push(apron);
 
+  // Верх площадки (y=2) копланарен апрону (тоже y=2): стыкуем без нахлёста,
+  // z от 40 — иначе полоса z∈[35,40] мерцала бы z-fighting'ом.
   const yardGround = box(
     scene,
     "yard-ground",
-    { width: 440, height: 4, depth: 265, x: 0, y: 0, z: 167.5 },
+    { width: 440, height: 4, depth: 260, x: 0, y: 0, z: 170 },
     materials.yard,
     roots.terminal,
   );
@@ -110,17 +112,20 @@ export function buildTerminal(
     roots.terminal,
   );
 
+  // Крановые рельсы: краны стоят на z = 12 (данные), колея тележек
+  // параметрического крана ±8.5 — рельсы обязаны быть на 12 ∓ 8.5, иначе
+  // тележки не встают на них (старые 4.5/23 были симметричны вокруг 13.75).
   box(
     scene,
     "crane-rail-a",
-    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 4.5 },
+    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 3.5 },
     materials.rail,
     roots.terminal,
   );
   box(
     scene,
     "crane-rail-b",
-    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 23 },
+    { width: 424, height: 0.14, depth: 0.22, x: 0, y: 2.08, z: 20.5 },
     materials.rail,
     roots.terminal,
   );
@@ -141,7 +146,10 @@ export function buildTerminal(
     scene,
   );
   dash.material = dashMaterial;
-  dash.isVisible = false;
+  // Мастер обязан быть видимым: thin instances рисуются только у активного
+  // меша (гейт mesh.isVisible в scene._evaluateActiveMeshes), а сам мастер
+  // не рисуется — его матрицы в буфере инстансов нет.
+  dash.isVisible = true;
   dash.isPickable = false;
   dash.parent = roots.terminal;
   const dashMatrices: number[] = [];
@@ -182,7 +190,7 @@ export function buildTerminal(
     scene,
   );
   sleeper.material = materials.ballast;
-  sleeper.isVisible = false;
+  sleeper.isVisible = true;
   sleeper.isPickable = false;
   sleeper.parent = roots.rail;
   const sleeperMatrices: number[] = [];
@@ -197,16 +205,19 @@ export function buildTerminal(
   );
   sleeper.alwaysSelectAsActiveMesh = true;
 
+  // Матрица инстанса преумножается на мировую матрицу мастера
+  // (instancesVertex: finalWorld = world * finalWorld), поэтому смещение
+  // по Y живёт только в матрицах: y=2.9 в опциях дало бы кнехты на 5.8.
   const bollard = cylinder(
     scene,
     "bollard-base",
     1.4,
     1.8,
-    { y: 2.9, tessellation: 10 },
+    { tessellation: 10 },
     materials.steelLight,
     roots.terminal,
   );
-  bollard.isVisible = false;
+  bollard.isVisible = true;
   bollard.isPickable = false;
   const bollardMatrices: number[] = [];
   for (let x = -208; x <= 208; x += 26) {
@@ -263,7 +274,7 @@ export function buildTerminal(
     scene,
   );
   fencePost.material = materials.steelLight;
-  fencePost.isVisible = false;
+  fencePost.isVisible = true;
   fencePost.isPickable = false;
   fencePost.parent = roots.terminal;
   const fenceMatrices: number[] = [];

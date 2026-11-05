@@ -16,19 +16,36 @@ import { TopBar } from "./ui/TopBar";
 import { SceneLabels } from "./ui/SceneLabels";
 import { AlertIcon, LogoMark } from "./ui/icons";
 
+/**
+ * Обработчики источника данных, привязанные к поколению connect():
+ * опоздавшие снимки и статусы от устаревшего подключения (гонка
+ * «Переподключить» во время pending start) не трогают store — иначе
+ * ложное «Соединение потеряно» сбрасывает статус нового источника.
+ */
 function createHandlers(
   mode: "server" | "demo",
+  isStale: () => boolean,
 ): DataSourceHandlers {
   return {
     onSnapshot: (snapshot) => {
+      if (isStale()) {
+        return;
+      }
       store.applySnapshot(snapshot);
       store.setConnection(mode === "server" ? "live" : "demo");
     },
     onDelta: (delta) => {
+      if (isStale()) {
+        return;
+      }
       store.applyDelta(delta);
       store.setConnection(mode === "server" ? "live" : "demo");
     },
-    onConnection: (connection) => store.setConnection(connection),
+    onConnection: (connection) => {
+      if (!isStale()) {
+        store.setConnection(connection);
+      }
+    },
   };
 }
 
@@ -44,12 +61,13 @@ export default function App() {
   const connect = useCallback(async () => {
     const generation = generationRef.current + 1;
     generationRef.current = generation;
+    const isStale = () => generation !== generationRef.current;
     sourceRef.current?.stop();
     sourceRef.current = null;
     store.set({ dataSourceMode: null });
     store.setConnection("connecting");
 
-    const server = new ServerDataSource(createHandlers("server"));
+    const server = new ServerDataSource(createHandlers("server", isStale));
     try {
       await server.start();
       if (generation !== generationRef.current) {
@@ -63,7 +81,7 @@ export default function App() {
       if (generation !== generationRef.current) {
         return;
       }
-      const demo = new DemoDataSource(createHandlers("demo"));
+      const demo = new DemoDataSource(createHandlers("demo", isStale));
       store.set({ dataSourceMode: "demo" });
       try {
         await demo.start();
@@ -119,23 +137,35 @@ export default function App() {
       return;
     }
     let cancelled = false;
-    void import("./scene/PortScene").then(async ({ PortScene }) => {
-      if (cancelled || !canvasRef.current || sceneRef.current) {
-        return;
-      }
-      // Создание асинхронное: WebGPU-движку нужно дождаться адаптера.
-      const scene = await PortScene.create(
-        canvasRef.current,
-        snapshot,
-        (frame) => store.set({ diagnostics: frame }),
-        (next) => setSceneLabels(next),
-      );
-      if (cancelled) {
-        scene.dispose();
-        return;
-      }
-      sceneRef.current = scene;
-    });
+    void import("./scene/PortScene")
+      .then(async ({ PortScene }) => {
+        if (cancelled || !canvasRef.current || sceneRef.current) {
+          return;
+        }
+        // Создание асинхронное: WebGPU-движку нужно дождаться адаптера.
+        const scene = await PortScene.create(
+          canvasRef.current,
+          snapshot,
+          (frame) => {
+            // Кадры диагностики нужны только dev-панели: в production они
+            // ре-рендерили App каждые 500 мс без пользы.
+            if (import.meta.env.DEV) {
+              store.set({ diagnostics: frame });
+            }
+          },
+          (next) => setSceneLabels(next),
+        );
+        if (cancelled) {
+          scene.dispose();
+          return;
+        }
+        sceneRef.current = scene;
+      })
+      .catch((error) => {
+        // Ошибка загрузки чанка (сеть, деплой): без catch обещание
+        // повисало unhandled, а экран — навсегда в «Подключении…».
+        console.error("[app] не удалось загрузить модуль сцены:", error);
+      });
     return () => {
       cancelled = true;
       sceneRef.current?.dispose();

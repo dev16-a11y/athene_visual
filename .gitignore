@@ -21,5 +21,8 @@ server/.config/.dotnet-tools/
 *.user
 *.suo
 
+# editor temp files (Office/OneDrive rename artifacts like *.TMP)
+*.TMP
+
 # logs and screenshots produced during checks
 *.log

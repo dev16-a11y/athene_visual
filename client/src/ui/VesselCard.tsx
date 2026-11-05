@@ -19,7 +19,12 @@ export function VesselCard({ vessel, nowMs }: VesselCardProps) {
   const progress = computeProgress(vessel.completedTeu, vessel.plannedTeu);
   const tone = deviationTone(vessel.deviationMinutes);
   const remaining = Math.max(0, vessel.plannedTeu - vessel.completedTeu);
-  const finishDelta = Date.parse(vessel.plannedFinish) - nowMs;
+  // nowMs — локальные часы; как и остальные возрасты, дедлайн сверяем
+  // с серверным временем (смещение в store), иначе при рассинхроне
+  // «До завершения» врёт на offset.
+  const finishDelta =
+    Date.parse(vessel.plannedFinish) -
+    (nowMs + store.getState().clockOffsetMs);
 
   return (
     <section className="panel vessel-card" aria-label={`Карточка судна ${vessel.name}`}>

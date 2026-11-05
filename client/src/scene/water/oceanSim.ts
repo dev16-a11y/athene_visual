@@ -233,6 +233,17 @@ export class OceanSim {
     this.dirty = true;
   }
 
+  /**
+   * Форсирует полный пересчёт спектра и обнуление каскадов на следующем шаге.
+   * Нужен после восстановления потерянного WebGL-контекста: Babylon
+   * перевыделяет render targets, но их содержимое при этом теряется, а
+   * спектр считается только один раз при старте.
+   */
+  resync(): void {
+    this.dirty = true;
+    this.initialized = false;
+  }
+
   /** Все ли шейдеры скомпилировались; используется для диагностики. */
   get compileErrors(): string[] {
     return this.passes

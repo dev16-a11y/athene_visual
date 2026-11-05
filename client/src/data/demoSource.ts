@@ -44,7 +44,9 @@ export class DemoDataSource implements PortDataSource {
       window.clearInterval(this.timer);
       this.timer = null;
     }
-    this.handlers.onConnection("offline");
+    // «offline» не шлём: stop() вызывают только при размонтировании
+    // (UI уже уходит) или при устаревшем поколении connect() — его статус
+    // не должен трогать новое подключение.
   }
 
   setPaused(paused: boolean): void {
@@ -83,10 +85,12 @@ export class DemoDataSource implements PortDataSource {
   }
 
   private advance(): void {
-    const next = this.snapshotAt(Date.now());
+    // Пауза проверяем до сборки снимка: полный snapshot строить и мутировать
+    // tick каждые 2 с вхолостую незачем.
     if (this.paused) {
       return;
     }
+    const next = this.snapshotAt(Date.now());
     const delta = demoDelta(this.lastSnapshot ?? next, next);
     this.lastSnapshot = next;
     this.handlers.onDelta(delta);

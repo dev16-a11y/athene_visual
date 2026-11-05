@@ -270,11 +270,12 @@ export class EntityMotion {
   private leadRoom = Number.POSITIVE_INFINITY;
   private blocked = false;
   /**
-   * Кадры после снятия ограничения, когда «перенос положения» запрещён:
+   * Секунды после снятия ограничения, когда «перенос положения» запрещён:
    * отставание накопилось из-за стоянки в очереди, и перескок вперёд был бы
-   * перескоком сквозь впереди идущую машину.
+   * перескоком сквозь впереди идущую машину. Секунды, а не кадры: при 30 fps
+   * кадровая константа удваивала срок.
    */
-  private leadGrace = 0;
+  private leadGraceSeconds = 0;
 
   constructor(id: string, options: MotionOptions = {}) {
     this.id = id;
@@ -392,6 +393,7 @@ export class EntityMotion {
     this.display = { ...this.hold };
     this.lastSampleTime = now;
     this.snapPending = true;
+    this.leadGraceSeconds = 0;
   }
 
   sample(now: number): MotionPose {
@@ -461,7 +463,7 @@ export class EntityMotion {
       this.displayS = targetS;
     } else {
       const diff = shortestAlongRoute(this.displayS, targetS, route.length);
-      if (Math.abs(diff) > this.snapDistance && this.leadGrace === 0) {
+      if (Math.abs(diff) > this.snapDistance && this.leadGraceSeconds <= 0) {
         // Разрыв слишком велик (долгое отсутствие данных, переподключение):
         // показываем фактическое положение, а не ползём к нему минуту.
         this.displayS = targetS;
@@ -489,7 +491,7 @@ export class EntityMotion {
       }
     }
     if (this.leadLimitS !== null) {
-      this.leadGrace = 180;
+      this.leadGraceSeconds = 3;
       const room = shortestAlongRoute(this.displayS, this.leadLimitS, route.length);
       this.leadRoom = room;
       if (room < 0) {
@@ -503,8 +505,11 @@ export class EntityMotion {
     } else {
       this.leadRoom = Number.POSITIVE_INFINITY;
       this.blocked = false;
-      if (this.leadGrace > 0) {
-        this.leadGrace -= 1;
+      if (this.leadGraceSeconds > 0) {
+        this.leadGraceSeconds = Math.max(
+          0,
+          this.leadGraceSeconds - this.frameGapSeconds,
+        );
       }
     }
     return route.at(this.displayS);

@@ -80,7 +80,3 @@ export function mergeBoxes(
   }
   return mesh;
 }
-
-export function boxesToFloatArray(boxes: BoxInstance[]): number[] {
-  return boxes.map((item) => item.x);
-}

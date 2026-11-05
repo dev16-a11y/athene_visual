@@ -79,7 +79,6 @@ export function buildTruck(
     }
   }
 
-  const beaconMaterial = cabMaterial;
   const beacon = box(
     scene,
     "truck-beacon",
@@ -89,7 +88,6 @@ export function buildTruck(
   );
   beacon.metadata = { skipShadow: true };
   parametric.push(beacon);
-  void beaconMaterial;
 
   tagEntity(truckRoot, truck.id);
   castShadows(shadow, truckRoot);
@@ -152,8 +150,4 @@ export function buildTruck(
       }
     },
   };
-}
-
-export function resetTruckMaterials(): void {
-  truckCounter = 0;
 }

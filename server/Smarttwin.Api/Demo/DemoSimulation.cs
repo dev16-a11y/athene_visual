@@ -114,7 +114,9 @@ public sealed class DemoSimulation
                 Operation = "loading",
                 Berth = "02",
                 PlannedTeu = 2400,
-                CompletedTeu = (int)(1632 - StartTick * 4 + tick * 4),
+                // Клампим: без него на длинной демо-сессии счётчик
+                // уезжал за план и карточка показывала «8832 из 2400 TEU».
+                CompletedTeu = Math.Min(2400, (int)(1632 - StartTick * 4 + tick * 4)),
                 StartedAt = startedAt,
                 PlannedFinish = plannedFinish,
                 DeviationMinutes = 35,
@@ -134,7 +136,7 @@ public sealed class DemoSimulation
                 Operation = "unloading",
                 Berth = "03",
                 PlannedTeu = 3100,
-                CompletedTeu = (int)(1302 - StartTick * 3 + tick * 3),
+                CompletedTeu = Math.Min(3100, (int)(1302 - StartTick * 3 + tick * 3)),
                 StartedAt = startedAt,
                 PlannedFinish = plannedFinish,
                 DeviationMinutes = -10,
