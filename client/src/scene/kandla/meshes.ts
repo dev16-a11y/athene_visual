@@ -69,7 +69,7 @@ function applySideTint(mesh: Mesh, tint: Color3): void {
  * меша, из-за чего плитка резиновая на объектах разного размера. Пишем
  * собственные UV — повтор текстуры становится честным «раз в N метров».
  */
-function applyWorldUv(mesh: Mesh, metresPerRepeat: number): void {
+export function applyWorldUv(mesh: Mesh, metresPerRepeat: number): void {
   const positions = mesh.getVerticesData("position");
   if (!positions) return;
   const uvs = new Float32Array((positions.length / 3) * 2);

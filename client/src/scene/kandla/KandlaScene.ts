@@ -41,10 +41,12 @@ import { createGeoFrame, type GeoFrame } from "./geo";
 import { loadKandlaLayers, type KandlaLayers } from "./layers";
 import { createKandlaMaterials, type KandlaMaterials } from "./materials";
 import { buildKandlaGround, type KandlaGroundStats } from "./meshes";
+import { buildKandlaInfrastructure, type KandlaInfraStats } from "./infrastructure";
 
 export interface KandlaInfo {
   kind: "kandla";
   stats: KandlaGroundStats;
+  infrastructure: KandlaInfraStats;
   layers: {
     land: number;
     water: number;
@@ -84,6 +86,7 @@ export class KandlaScene implements SceneHandle {
   private readonly frame: GeoFrame;
   private readonly layers: KandlaLayers;
   private readonly stats: KandlaGroundStats;
+  private readonly infraStats: KandlaInfraStats;
   private readonly options: KandlaSceneOptions;
   private readonly backend: CreatedEngine["backend"];
   private readonly instrumentation: SceneInstrumentation;
@@ -106,6 +109,7 @@ export class KandlaScene implements SceneHandle {
     frame: GeoFrame,
     layers: KandlaLayers,
     stats: KandlaGroundStats,
+    infraStats: KandlaInfraStats,
     instrumentation: SceneInstrumentation,
     options: KandlaSceneOptions,
     canvas: HTMLCanvasElement,
@@ -119,6 +123,7 @@ export class KandlaScene implements SceneHandle {
     this.frame = frame;
     this.layers = layers;
     this.stats = stats;
+    this.infraStats = infraStats;
     this.instrumentation = instrumentation;
     this.options = options;
     this.resizeObserver = new ResizeObserver(() => this.engine.resize());
@@ -204,6 +209,10 @@ export class KandlaScene implements SceneHandle {
     for (const mesh of meshes) {
       mesh.alwaysSelectAsActiveMesh = true;
     }
+    // Дорожная сеть — плоские заглушки поверх суши: геометрия из OSM,
+    // текстуры покрытий подключим позже. Меши сами добавляются в сцену и
+    // всегда активны (в buildRibbonMesh).
+    const { stats: infraStats } = buildKandlaInfrastructure(scene, layers, materials);
 
     const instrumentation = new SceneInstrumentation(scene);
 
@@ -217,6 +226,7 @@ export class KandlaScene implements SceneHandle {
       frame,
       layers,
       stats,
+      infraStats,
       instrumentation,
       options,
       canvas,
@@ -303,6 +313,7 @@ export class KandlaScene implements SceneHandle {
     return {
       kind: "kandla",
       stats: this.stats,
+      infrastructure: this.infraStats,
       layers: {
         land: this.layers.land.length,
         water: this.layers.water.polygons.length,

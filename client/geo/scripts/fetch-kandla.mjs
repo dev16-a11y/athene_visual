@@ -27,7 +27,7 @@ const metaFile = path.join(rawDir, "kandla-fetch-meta.json");
 
 const force = process.argv.includes("--force");
 
-/** Теги, которые нужны для основы территории и акватории. */
+/** Теги, которые нужны для основы территории, акватории и дорожной сети. */
 const SELECTORS = [
   'way["natural"="coastline"]',
   'way["natural"="water"]',
@@ -36,6 +36,10 @@ const SELECTORS = [
   'way["man_made"~"^(quay|pier|breakwater|groyne|jetty|dock)$"]',
   'way["landuse"="salt_pond"]',
   'way["natural"="beach"]',
+  // Дорожная сеть: дороги и рельсы целиком, сортировка по значимости —
+  // на этапе подготовки (в снимке пусть лежит всё).
+  'way["highway"]',
+  'way["railway"]',
   'relation["natural"="water"]',
   'relation["natural"="wetland"]',
   'relation["landuse"="salt_pond"]',

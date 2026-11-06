@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg-deep: #05111a;
   --bg-panel: rgba(7, 24, 35, 0.74);
   --bg-panel-strong: rgba(6, 20, 30, 0.9);
@@ -2179,6 +2179,14 @@ input:focus-visible {
 
 .geo-swatch-mud {
   background: #8b8870;
+}
+
+.geo-swatch-road {
+  background: #3a3c3d;
+}
+
+.geo-swatch-rail {
+  background: #8a8880;
 }
 
 .connection-geo .connection-dot {

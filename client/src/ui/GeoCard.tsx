@@ -5,6 +5,7 @@
 // дать проверяемую привязку: координаты центра обзора в градусах.
 
 import type { KandlaInfo } from "../scene/kandla/KandlaScene";
+import { KANDLA_INFRA } from "../scene/kandla/config";
 import { formatGeo } from "../scene/kandla/geo";
 import { formatDate } from "../utils/format";
 
@@ -15,6 +16,14 @@ interface GeoCardProps {
 }
 
 const numberFormat = new Intl.NumberFormat("ru-RU");
+const pluralRules = new Intl.PluralRules("ru-RU");
+
+/** «1 нить», «2 нити», «8 нитей». */
+function threads(count: number): string {
+  const form = pluralRules.select(count);
+  const word = form === "one" ? "нить" : form === "few" ? "нити" : "нитей";
+  return `${numberFormat.format(count)} ${word}`;
+}
 
 export function GeoCard({ info, camera, error }: GeoCardProps) {
   const altitude = camera ? camera.radius * Math.cos(camera.beta) : null;
@@ -56,13 +65,39 @@ export function GeoCard({ info, camera, error }: GeoCardProps) {
                 <dd>{info.layers.piers}</dd>
               </div>
               <div className="geo-row">
+                <dt>Дороги</dt>
+                <dd>
+                  {numberFormat.format(Math.round(info.infrastructure.roadKm))} км ·{" "}
+                  {numberFormat.format(info.infrastructure.roadLines)} линий
+                </dd>
+              </div>
+              <div className="geo-row">
+                <dt>Ж/д пути</dt>
+                <dd>
+                  {numberFormat.format(Math.round(info.infrastructure.railKm))} км · колея{" "}
+                  {KANDLA_INFRA.railHalfGauge * 2000} мм
+                </dd>
+              </div>
+              <div className="geo-row">
+                <dt>Подкрановые нити</dt>
+                <dd>
+                  {info.infrastructure.craneRailLines > 0
+                    ? threads(info.infrastructure.craneRailLines)
+                    : "нет"}
+                </dd>
+              </div>
+              <div className="geo-row">
                 <dt>Точек контура суши</dt>
                 <dd>{numberFormat.format(info.stats.landVertices)}</dd>
               </div>
               <div className="geo-row">
                 <dt>Снимок OSM</dt>
                 <dd>
-                  {info.dataTimestamp ? formatDate(info.dataTimestamp) : "без отметки"}
+                  {/* Снимок может прийти без отметки времени (резервный OSM API):
+                      пустое место здесь читалось бы как ошибка загрузки. */}
+                  {info.dataTimestamp && !Number.isNaN(new Date(info.dataTimestamp).getTime())
+                    ? formatDate(info.dataTimestamp)
+                    : "без отметки"}
                 </dd>
               </div>
               <div className="geo-row">
@@ -76,9 +111,12 @@ export function GeoCard({ info, camera, error }: GeoCardProps) {
             </dl>
 
             <p className="geo-note">
-              Территория и акватория без инфраструктуры: зданий, кранов, судов и
+              Территория, акватория и путевая сеть: зданий, кранов, судов и
               грузов в сцене нет. Очертания восстановлены по данным
-              OpenStreetMap, локальные высоты условные.
+              OpenStreetMap, локальные высоты условные, подкрановые нити
+              выведены из причального фронта. Покрытия дорог — материалы набора
+              «Афина · Дорожные покрытия v1», балласт и подкрановые балки —
+              набора «Афина · Железнодорожные и подкрановые пути v1».
             </p>
 
             <div className="geo-attribution">
@@ -103,6 +141,14 @@ export function GeoCard({ info, camera, error }: GeoCardProps) {
           <li>
             <span className="geo-swatch geo-swatch-mud" />
             Приливные участки (мангры)
+          </li>
+          <li>
+            <span className="geo-swatch geo-swatch-road" />
+            Дороги и проезды
+          </li>
+          <li>
+            <span className="geo-swatch geo-swatch-rail" />
+            Ж/д пути и подкрановые нити
           </li>
         </ul>
       </section>

@@ -732,6 +732,171 @@ for (const chain of coastChains) {
   flush();
 }
 
+// ── Дорожная сеть ────────────────────────────────────────────────────────────
+// Дороги и рельсы берутся из того же снимка OSM (highway=*, railway=*). Линии
+// режутся по маске суши: участки над водой (мосты) в слой не попадают —
+// моделью моста займёмся отдельно, когда появятся данные о переправах.
+
+const highwayWays = [...ways.values()].filter((element) => tag(element, "highway"));
+const railwayWays = [...ways.values()].filter((element) => tag(element, "railway"));
+
+/** Ячейка маски под точкой: true — суша. */
+function maskAt(x, z) {
+  const i = Math.floor((x - fetchBox.x0) / res);
+  const j = Math.floor((z - fetchBox.z0) / res);
+  if (i < 0 || j < 0 || i >= nx || j >= nz) return false;
+  return mask[j * nx + i] === 1;
+}
+
+/** Полная ширина покрытия по типу дороги, м. */
+const ROAD_WIDTHS = {
+  trunk: 16,
+  trunk_link: 13,
+  primary: 14,
+  primary_link: 11,
+  secondary: 11,
+  secondary_link: 9,
+  tertiary: 10,
+  tertiary_link: 8,
+  residential: 8,
+  unclassified: 7,
+  service: 6,
+  track: 4.5,
+};
+
+/** Класс для сцены: дорога / улица / проезд. */
+function roadClass(kind) {
+  if (["trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link", "tertiary", "tertiary_link"].includes(kind)) {
+    return "road";
+  }
+  if (kind === "residential" || kind === "unclassified") return "street";
+  return "service";
+}
+
+/**
+ * Линия → участки на суше: точки в воде выбрасываются, линия рвётся.
+ * Так дорога кончается у кромки воды, а не висит над акваторией.
+ */
+function landRuns(points) {
+  const runs = [];
+  let run = [];
+  for (const point of points) {
+    if (maskAt(point[0], point[1])) {
+      run.push(point);
+    } else {
+      if (run.length >= 2) runs.push(run);
+      run = [];
+    }
+  }
+  if (run.length >= 2) runs.push(run);
+  return runs;
+}
+
+const roadsOut = [];
+for (const element of highwayWays) {
+  const kind = tag(element, "highway");
+  if (!ROAD_WIDTHS[kind]) continue;
+  const cls = roadClass(kind);
+  const width = ROAD_WIDTHS[kind];
+  for (const points of linesOf(element)) {
+    for (const part of clipLineToBox(points, fetchBox)) {
+      for (const run of landRuns(part)) {
+        const reduced = simplify(run, area.simplifyMetres);
+        if (reduced.length < 2) continue;
+        roadsOut.push({
+          id: `way/${element.id}`,
+          kind,
+          cls,
+          width,
+          name: element.tags?.name ?? null,
+          coords: reduced.map(([x, z]) => [+x.toFixed(2), +z.toFixed(2)]),
+        });
+      }
+    }
+  }
+}
+
+// Рельсы: главный путь, ветки, сортировочные и подъездные — всё в один слой,
+// различается классом. Ширина коридора (балласт) единая.
+const railLinesOut = [];
+for (const element of railwayWays) {
+  const kind = tag(element, "railway");
+  const usage = tag(element, "usage") ?? null;
+  const service = tag(element, "service") ?? null;
+  const cls = usage === "main" || (!usage && !service) ? "main" : "industrial";
+  for (const points of linesOf(element)) {
+    for (const part of clipLineToBox(points, fetchBox)) {
+      for (const run of landRuns(part)) {
+        const reduced = simplify(run, area.simplifyMetres);
+        if (reduced.length < 2) continue;
+        railLinesOut.push({
+          id: `way/${element.id}`,
+          kind,
+          cls,
+          usage,
+          service,
+          gauge: element.tags?.gauge ?? null,
+          name: element.tags?.name ?? null,
+          coords: reduced.map(([x, z]) => [+x.toFixed(2), +z.toFixed(2)]),
+        });
+      }
+    }
+  }
+}
+
+// ── Крановые пути ────────────────────────────────────────────────────────────
+// В OSM рельсы портальных кранов не размечены — их нет нигде в этой области.
+// Выводим схематично из причального фронта: два рельса параллельно линии
+// кордона, в сторону суши. Геометрия — заглушка для будущих моделей кранов,
+// параметры (отступ и колея) — проектные допущения, не данные OSM.
+
+const CRANE_RAIL = {
+  /** Отступ ближнего рельса от кромки кордона, м. */
+  setback: 15,
+  /** Колея (между рельсами), м. */
+  gauge: 20,
+};
+
+/** Смещение линии в сторону на distance; side подбирается по маске суши. */
+function offsetLine(points, distance, side) {
+  const out = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    const dx = next[0] - prev[0];
+    const dz = next[1] - prev[1];
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = (-dz / len) * side * distance;
+    const nz = (dx / len) * side * distance;
+    out.push([points[i][0] + nx, points[i][1] + nz]);
+  }
+  return out;
+}
+
+const craneRailsOut = [];
+for (const [frontIndex, front] of quayFront.entries()) {
+  if (front.length < 2) continue;
+  // Сторона суши: где при смещении на 10 м больше точек на суше.
+  const testSide = (side) => {
+    const probe = offsetLine(front, 10, side);
+    return probe.filter((point) => maskAt(point[0], point[1])).length;
+  };
+  const side = testSide(1) >= testSide(-1) ? 1 : -1;
+  for (const [railIndex, offset] of [CRANE_RAIL.setback, CRANE_RAIL.setback + CRANE_RAIL.gauge].entries()) {
+    const rail = landRuns(offsetLine(front, offset, side)).filter((run) => run.length >= 2);
+    for (const [runIndex, run] of rail.entries()) {
+      const reduced = simplify(run, area.simplifyMetres);
+      if (reduced.length < 2) continue;
+      craneRailsOut.push({
+        id: `crane-front-${frontIndex}-rail-${railIndex}-${runIndex}`,
+        front: `quay-front-${frontIndex}`,
+        setback: offset,
+        coords: reduced.map(([x, z]) => [+x.toFixed(2), +z.toFixed(2)]),
+      });
+    }
+  }
+}
+
 // ── Вспомогательные площади ─────────────────────────────────────────────────
 
 const wetlandOut = [];
@@ -885,6 +1050,33 @@ write("intertidal.json", {
   polygons: wetlandOut,
 });
 
+write("roads.json", {
+  ...shared,
+  layer: "roads",
+  note:
+    "осевые линии highway=* из OSM; ширина покрытия назначена по типу дороги, " +
+    "участки над водой (мосты) вырезаны по маске суши — их моделируем отдельно",
+  lines: roadsOut,
+});
+
+write("rail.json", {
+  ...shared,
+  layer: "rail",
+  note:
+    "осевые линии railway=* из OSM (главные, подъездные, сортировочные); " +
+    "крановые пути выведены схематично из причального фронта и помечены как производные",
+  lines: railLinesOut,
+  craneRails: {
+    derivedFrom: "quay.front",
+    setback: CRANE_RAIL.setback,
+    gauge: CRANE_RAIL.gauge,
+    note:
+      "в OSM крановые рельсы не размечены: пути параллельны кордону, " +
+      "в сторону суши, с фиксированным отступом и колеёй — заготовка для моделей кранов",
+    lines: craneRailsOut,
+  },
+});
+
 const landAreaKm2 = landPolygons.reduce((sum, polygon) => sum + polygon.areaM2, 0);
 const waterAreaKm2 =
   ((fetchBox.x1 - fetchBox.x0) * (fetchBox.z1 - fetchBox.z0)) / 1e6 - landAreaKm2;
@@ -935,6 +1127,13 @@ write("meta.json", {
     intertidal: wetlandOut.length,
     inlandWaterBodies: waterPolygons.length,
     saltPonds: saltPondElements.length,
+    roads: roadsOut.length,
+    roadsByClass: roadsOut.reduce((acc, line) => {
+      acc[line.cls] = (acc[line.cls] ?? 0) + 1;
+      return acc;
+    }, {}),
+    railLines: railLinesOut.length,
+    craneRails: craneRailsOut.length,
   },
   areasKm2: { land: +landAreaKm2.toFixed(2), water: +waterAreaKm2.toFixed(2) },
   calibration: { waterState, landState, waterSeed, landSeed },
@@ -945,11 +1144,16 @@ write("meta.json", {
     "вода рукава в OSM не размечена полигоном: она следует из береговой линии",
     "причальный фронт — участки берега ближе 90 м к man_made=pier",
     "внутренние водоёмы natural=water вырезаны из суши по контуру OSM",
+    `дороги и рельсы — осевые линии highway/railway из снимка; ширина покрытия назначена ` +
+      `по типу (${Object.entries(ROAD_WIDTHS).slice(0, 4).map(([k, v]) => `${k} ${v} м`).join(", ")} …)`,
+    `крановые пути — параллельный перенос причального фронта в сторону суши: ` +
+      `отступ ${CRANE_RAIL.setback} м, колея ${CRANE_RAIL.gauge} м; в OSM таких объектов нет`,
   ],
   assumptions: [
-    "высоты условные: поверхность суши плоская, +1,6 м над водой — не измерение",
+    "высоты условные: поверхность суши плоская, +2,6 м над водой — не измерение",
     "глубины и линия прилива не переносились: в источнике их нет",
     "граница загрузки не является юридической границей порта",
+    "ширина дорожного покрытия и колея крановых путей — проектные допущения, не данные OSM",
   ],
 });
 
@@ -957,4 +1161,9 @@ console.log(
   `[prepare] суша ${landAreaKm2.toFixed(2)} км², вода ${waterAreaKm2.toFixed(2)} км², ` +
     `полигонов ${landPolygons.length} (дыр ${landPolygons.reduce((s, p) => s + p.holes.length, 0)}), ` +
     `точек контура ${landPolygons.reduce((s, p) => s + p.outer.length, 0)}`,
+);
+console.log(
+  `[prepare] дороги ${roadsOut.length} линий ` +
+    `(${Object.entries(roadsOut.reduce((acc, l) => ({ ...acc, [l.cls]: (acc[l.cls] ?? 0) + 1 }), {})).map(([k, v]) => `${k} ${v}`).join(", ")}), ` +
+    `рельсы ${railLinesOut.length}, крановые пути ${craneRailsOut.length}`,
 );

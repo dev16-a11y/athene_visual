@@ -213,6 +213,269 @@ if (debug.missing) {
     `${before.lon.toFixed(5)} → ${after.lon.toFixed(5)} (${deltaLon.toFixed(0)} м, ${deltaLat.toFixed(0)} м)`,
   );
 
+  // Дорожная сеть: линии загружены, покрытия построены и лежат на суше.
+  const infra = await page.evaluate(() => {
+    const scene = window.__smarttwinDebug.scene;
+    const heights = window.__smarttwinDebug.heights;
+    const meshes = {};
+    for (const name of ["kandla-roads-road", "kandla-roads-street", "kandla-roads-service", "kandla-rail-ballast", "kandla-rail-strips", "kandla-crane-bed", "kandla-crane-rails"]) {
+      const mesh = scene.getMeshByName(name);
+      meshes[name] = mesh
+        ? {
+            triangles: mesh.getTotalIndices() / 3,
+            minY: +mesh.getBoundingInfo().boundingBox.minimum.y.toFixed(2),
+            maxY: +mesh.getBoundingInfo().boundingBox.maximum.y.toFixed(2),
+          }
+        : null;
+    }
+    return { meshes, landTop: heights.land };
+  });
+  const roadMesh = infra.meshes["kandla-roads-road"];
+  const serviceMesh = infra.meshes["kandla-roads-service"];
+  const railMesh = infra.meshes["kandla-rail-strips"];
+  const craneMesh = infra.meshes["kandla-crane-rails"];
+  check(
+    "дорожные покрытия построены",
+    Boolean(roadMesh && serviceMesh && roadMesh.triangles > 100 && serviceMesh.triangles > 500),
+    `магистрали ${roadMesh?.triangles ?? 0} тр., проезды ${serviceMesh?.triangles ?? 0} тр.`,
+  );
+  check(
+    "рельсовые пути построены",
+    Boolean(infra.meshes["kandla-rail-ballast"] && railMesh && railMesh.triangles > 200),
+    `балласт ${infra.meshes["kandla-rail-ballast"]?.triangles ?? 0} тр., штрихи ${railMesh?.triangles ?? 0} тр.`,
+  );
+  const craneBed = infra.meshes["kandla-crane-bed"];
+  check(
+    "подкрановые нити: балка и рельс",
+    Boolean(craneBed && craneMesh && craneBed.triangles >= 16 && craneMesh.triangles >= 16),
+    `балка ${craneBed?.triangles ?? 0} тр., рельс ${craneMesh?.triangles ?? 0} тр.`,
+  );
+  const liftMax = Math.max(...Object.values(infra.meshes).filter(Boolean).map((mesh) => mesh.maxY));
+  const liftMin = Math.min(...Object.values(infra.meshes).filter(Boolean).map((mesh) => mesh.minY));
+  check(
+    "покрытия лежат на суше, ниже причалов",
+    liftMin > infra.landTop && liftMax < infra.landTop + 0.6,
+    `от ${liftMin.toFixed(2)} до ${liftMax.toFixed(2)} м при суше ${infra.landTop}`,
+  );
+
+  // Покрытия набора: PBR-карты (albedo, normal, ORM) загружены и применены.
+  const surfaces = await page.evaluate(() => {
+    const scene = window.__smarttwinDebug.scene;
+    return scene.materials
+      .filter((material) => material.name.startsWith("kandla-surface-"))
+      .map((material) => ({
+        name: material.name.replace("kandla-surface-", ""),
+        albedo: material.albedoTexture?.isReady() ?? false,
+        normal: material.bumpTexture?.isReady() ?? false,
+        orm: material.metallicTexture?.isReady() ?? false,
+        size: material.albedoTexture
+          ? `${material.albedoTexture.getSize().width}x${material.albedoTexture.getSize().height}`
+          : "нет",
+        uvScale: material.albedoTexture?.uScale ?? null,
+      }));
+  });
+  const surfacesReady = surfaces.filter(
+    (surface) => surface.albedo && surface.normal && surface.orm,
+  );
+  check(
+    "покрытия и путевые поверхности загружены",
+    surfaces.length === 6 && surfacesReady.length === 6,
+    `${surfacesReady.length} из ${surfaces.length}: ${surfaces.map((surface) => surface.name).join(", ")}`,
+  );
+  // Два набора: дорожные карты 1024×1024, путевые 512×512.
+  const expectedSizes = {
+    asphalt_new: "1024x1024",
+    asphalt_worn: "1024x1024",
+    aggregate: "1024x1024",
+    ballast: "512x512",
+    concrete: "512x512",
+    crown: "512x512",
+  };
+  check(
+    "карты полного размера — как в наборах",
+    surfaces.every((surface) => surface.size === expectedSizes[surface.name]),
+    surfaces.map((surface) => `${surface.name} ${surface.size}`).join(", "),
+  );
+  // UV строятся в мировых метрах: uScale = 1 всегда, а шаг повтора зашит в UV.
+  // Настоящий шаг проверяем измерением — сколько метров мира приходится на одно
+  // повторение UV у каждого меша.
+  const uvSteps = await page.evaluate(() => {
+    const scene = window.__smarttwinDebug.scene;
+    const out = {};
+    for (const name of ["kandla-roads-road", "kandla-roads-street", "kandla-roads-service", "kandla-rail-ballast", "kandla-rail-strips", "kandla-crane-bed"]) {
+      const mesh = scene.getMeshByName(name);
+      if (!mesh) continue;
+      const positions = mesh.getVerticesData("position");
+      const uvs = mesh.getVerticesData("uv");
+      if (!positions || !uvs) continue;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minU = Infinity;
+      let maxU = -Infinity;
+      for (let index = 0; index < positions.length; index += 3) {
+        minX = Math.min(minX, positions[index]);
+        maxX = Math.max(maxX, positions[index]);
+      }
+      for (let index = 0; index < uvs.length; index += 2) {
+        minU = Math.min(minU, uvs[index]);
+        maxU = Math.max(maxU, uvs[index]);
+      }
+      out[name] = (maxX - minX) / (maxU - minU);
+    }
+    return out;
+  });
+  const uvValues = Object.entries(uvSteps).map(([name, step]) => [name, +step.toFixed(2)]);
+  check(
+    "шаг текстуры — из набора",
+    uvValues.every(([name, step]) =>
+      name.startsWith("kandla-roads-") ? Math.abs(step - 6) < 0.05 : Math.abs(step - 2) < 0.05,
+    ),
+    uvValues.map(([name, step]) => `${name.replace("kandla-", "")} ${step} м`).join(", "),
+  );
+  check(
+    "uScale не масштабирует повтор",
+    surfaces.every((surface) => surface.uvScale === 1),
+    `uScale: ${surfaces.map((surface) => surface.uvScale).join(", ")}`,
+  );
+
+  // Дороги пересекаются и лежат в одной плоскости: классы обязаны иметь разное
+  // смещение по глубине, иначе на перекрёстке ленты мерцают друг сквозь друга.
+  // Ленты пересекаются и лежат в одной плоскости: у каждой поверхности своё
+  // смещение по глубине, иначе на перекрёстке они мерцают друг сквозь друга.
+  // Порядок старшинства: проезд → улица → магистраль → балласт → балка → рельс.
+  const depthBias = await page.evaluate(() => {
+    const scene = window.__smarttwinDebug.scene;
+    return scene.materials
+      .filter((material) => material.name.startsWith("kandla-surface-"))
+      .map((material) => [material.name.replace("kandla-surface-", ""), material.zOffsetUnits]);
+  });
+  const surfaceBiases = depthBias.map(([, bias]) => bias);
+  const biasByName = new Map(depthBias);
+  check(
+    "поверхности разведены по глубине",
+    new Set(surfaceBiases).size === surfaceBiases.length &&
+      (biasByName.get("crown") ?? 0) < (biasByName.get("concrete") ?? 0) &&
+      (biasByName.get("concrete") ?? 0) < (biasByName.get("ballast") ?? 0) &&
+      (biasByName.get("ballast") ?? 0) < (biasByName.get("asphalt_new") ?? 0),
+    depthBias.map(([name, bias]) => `${name} ${bias}`).join(", "),
+  );
+
+  // Полотно без разрывов: площадь меша должна совпадать с длиной × ширину.
+  // Проверка ловит и потерянные отрезки, и выбросы митры на острых углах.
+  const ribbon = await page.evaluate(() => {
+    const api = window.__smarttwinDebug;
+    const scene = api.scene;
+    const lengthOf = (coords) => {
+      let total = 0;
+      for (let index = 1; index < coords.length; index += 1) {
+        total += Math.hypot(coords[index][0] - coords[index - 1][0], coords[index][1] - coords[index - 1][1]);
+      }
+      return total;
+    };
+    const out = {};
+    for (const cls of ["road", "street", "service"]) {
+      const mesh = scene.getMeshByName(`kandla-roads-${cls}`);
+      if (!mesh) {
+        out[cls] = null;
+        continue;
+      }
+      const expected = api.layers.roads
+        .filter((road) => road.cls === cls)
+        .reduce((sum, road) => sum + lengthOf(road.coords) * road.width, 0);
+      const positions = mesh.getVerticesData("position");
+      const indices = mesh.getIndices();
+      let area = 0;
+      let degenerate = 0;
+      for (let index = 0; index < indices.length; index += 3) {
+        const a = indices[index] * 3;
+        const b = indices[index + 1] * 3;
+        const c = indices[index + 2] * 3;
+        const triangle =
+          Math.abs(
+            (positions[b] - positions[a]) * (positions[c + 2] - positions[a + 2]) -
+              (positions[b + 2] - positions[a + 2]) * (positions[c] - positions[a]),
+          ) / 2;
+        area += triangle;
+        if (triangle < 0.01) degenerate += 1;
+      }
+      out[cls] = { ratio: area / expected, degenerate };
+    }
+    return out;
+  });
+  const ribbonValues = Object.values(ribbon).filter(Boolean);
+  check(
+    "полотно без разрывов и выбросов",
+    ribbonValues.length === 3 &&
+      ribbonValues.every(
+        (value) => value.ratio > 0.97 && value.ratio < 1.12 && value.degenerate === 0,
+      ),
+    Object.entries(ribbon)
+      .map(([cls, value]) => `${cls} ${value ? value.ratio.toFixed(3) : "нет"}`)
+      .join(", "),
+  );
+
+  // Покрытие читается: пиксель дороги темнее суши, но не проваливается в чёрное.
+  const roadPixel = await page.evaluate(async () => {
+    const api = window.__smarttwinDebug;
+    const scene = api.scene;
+    const camera = scene.activeCamera;
+    const V3 = camera.target.constructor;
+    const MatrixClass = scene.getTransformMatrix().constructor;
+    const engine = scene.getEngine();
+    const lengthOf = (coords) => {
+      let total = 0;
+      for (let index = 1; index < coords.length; index += 1) {
+        total += Math.hypot(coords[index][0] - coords[index - 1][0], coords[index][1] - coords[index - 1][1]);
+      }
+      return total;
+    };
+    const road = api.layers.roads
+      .filter((candidate) => candidate.cls === "road")
+      .sort((a, b) => lengthOf(b.coords) - lengthOf(a.coords))[0];
+    const mid = road.coords[Math.floor(road.coords.length / 2)];
+    const saved = { target: camera.target.clone(), alpha: camera.alpha, beta: camera.beta, radius: camera.radius };
+    camera.setTarget(new V3(mid[0], 2.6, mid[1]));
+    camera.alpha = -Math.PI / 2;
+    camera.beta = 0.1;
+    camera.radius = 90;
+    scene.render();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    scene.render();
+
+    const viewport = camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
+    const project = (x, y, z) => {
+      const point = V3.Project(new V3(x, y, z), MatrixClass.Identity(), scene.getTransformMatrix(), viewport);
+      return [point.x, point.y];
+    };
+    const gl = engine._gl;
+    const read = (x, y) => {
+      const buffer = new Uint8Array(4);
+      gl.readPixels(Math.round(x), engine.getRenderHeight() - 1 - Math.round(y), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+      return [buffer[0], buffer[1], buffer[2]];
+    };
+    const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    // Суша берётся строго вбок от оси дороги: смещение вдоль оси попало бы
+    // на то же покрытие и сравнение вышло бы нулевым.
+    const next = road.coords[Math.min(road.coords.length - 1, Math.floor(road.coords.length / 2) + 1)];
+    const length = Math.hypot(next[0] - mid[0], next[1] - mid[1]) || 1;
+    const ux = (next[0] - mid[0]) / length;
+    const uz = (next[1] - mid[1]) / length;
+    const [cx, cy] = project(mid[0], 2.65, mid[1]);
+    const [lx, ly] = project(mid[0] - uz * 14, 2.65, mid[1] + ux * 14);
+    const result = { road: lum(read(cx, cy)), land: lum(read(lx, ly)) };
+    camera.setTarget(saved.target);
+    camera.alpha = saved.alpha;
+    camera.beta = saved.beta;
+    camera.radius = saved.radius;
+    scene.render();
+    return result;
+  });
+  const roadContrast = roadPixel.land - roadPixel.road;
+  check(
+    "асфальт читается на суше",
+    roadContrast > 60 && roadPixel.road > 25,
+    `дорога ${Math.round(roadPixel.road)}, суша ${Math.round(roadPixel.land)}, разница ${Math.round(roadContrast)}`,
+  );
   // Кромка берега: стенка темнее суши, а сама суша стоит на месте.
   const shading = await page.evaluate(() => {
     const scene = window.__smarttwinDebug.scene;
@@ -268,9 +531,13 @@ if (debug.missing) {
     camera.beta = 0.8;
     camera.radius = 3000;
     camera.inertia = 0;
+    // Пикинг нужен только внутри этой пробы: включаем и выключаем, чтобы не
+    // мешать последующим проверкам (дорожные ленты не должны перехватывать лучи).
+    const switched = [];
     for (const mesh of scene.meshes) {
-      if (mesh.name.startsWith("kandla-") || mesh.name === "water") {
+      if ((mesh.name.startsWith("kandla-") || mesh.name === "water") && !mesh.isPickable) {
         mesh.isPickable = true;
+        switched.push(mesh);
       }
     }
     scene.render();
@@ -321,6 +588,7 @@ if (debug.missing) {
     };
     const landUnstable = await measure(landPoints);
     const waterUnstable = await measure(waterPoints);
+    for (const mesh of switched) mesh.isPickable = false;
     return {
       landPoints: landPoints.length,
       waterPoints: waterPoints.length,

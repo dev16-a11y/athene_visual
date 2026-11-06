@@ -3,21 +3,26 @@
 // Задача — спокойная промышленная основа: песочно-серая суша, сдержанный бетон
 // причальных оснований, мангровые отмели темнее суши. Никакого глянца: блик
 // почти погашен, шероховатость задаётся мелкой процедурной текстурой, а не
-// отражениями. Спутниковых снимков здесь нет и быть не должно — поверхность
-// остаётся свободной от инфраструктуры.
+// отражениями. Дорожные покрытия, балласт и подкрановые балки — PBR-материалы
+// из наборов «Афина · Дорожные покрытия v1» и «Афина · Железнодорожные и
+// подкрановые пути v1»: текстуры наборов, UV по мировым метрам.
 
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Scene } from "@babylonjs/core/scene";
 
 import { KANDLA_COLORS } from "./config";
+import { KANDLA_SURFACES, type SurfaceKey } from "./surfaces";
 
 export interface KandlaMaterials {
   land: StandardMaterial;
   quay: StandardMaterial;
   intertidal: StandardMaterial;
+  /** Покрытия и путевые поверхности наборов, по ключу поверхности. */
+  surfaces: Record<SurfaceKey, PBRMaterial>;
   dispose(): void;
 }
 
@@ -141,14 +146,85 @@ export function createKandlaMaterials(scene: Scene): KandlaMaterials {
   intertidal.ambientColor = new Color3(0.18, 0.18, 0.17);
   intertidal.backFaceCulling = false;
 
+  // Дорожные покрытия и путевые поверхности из наборов «Афина».
+  //
+  // Материал PBR: color (sRGB), normal (OpenGL), ORM (R — AO, G — roughness,
+  // B — metallic). Карты кладутся на геометрию территории, UV заданы в мировых
+  // метрах: шаг повтора берётся из набора (6 м у покрытий, 2 м у путей).
+  // Окружения (IBL) в сцене нет, поэтому environmentIntensity = 0: покрытия
+  // освещаются тем же солнцем и небом, что и суша.
+  const loadTexture = (path: string, gammaSpace: boolean): Texture => {
+    const texture = new Texture(
+      `${import.meta.env.BASE_URL}${path}`,
+      scene,
+      false,
+      false,
+      Texture.TRILINEAR_SAMPLINGMODE,
+      () => undefined,
+      undefined,
+      undefined,
+      false,
+    );
+    // Цветовая карта — sRGB, нормали и ORM — линейные: если перепутать,
+    // покрытие темнеет и блик уезжает.
+    texture.gammaSpace = gammaSpace;
+    texture.anisotropicFilteringLevel = 8;
+    return texture;
+  };
+  const surfaces = {} as Record<SurfaceKey, PBRMaterial>;
+  const surfaceTextures: Texture[] = [];
+  for (const key of Object.keys(KANDLA_SURFACES) as SurfaceKey[]) {
+    const { asset, folder, albedoGain, depthBias, metallicFromTexture, albedoTint } =
+      KANDLA_SURFACES[key];
+    const albedo = loadTexture(`${folder}/${asset}.png`, true);
+    const normal = loadTexture(`${folder}/${asset}_normal.png`, false);
+    const orm = loadTexture(`${folder}/${asset}_orm.png`, false);
+    surfaceTextures.push(albedo, normal, orm);
+
+    const material = new PBRMaterial(`kandla-surface-${asset}`, scene);
+    material.albedoTexture = albedo;
+    const tint = albedoTint ?? [1, 1, 1];
+    material.albedoColor = new Color3(
+      albedoGain * tint[0],
+      albedoGain * tint[1],
+      albedoGain * tint[2],
+    );
+    material.bumpTexture = normal;
+    material.metallicTexture = orm;
+    material.useAmbientOcclusionFromMetallicTextureRed = true;
+    material.useRoughnessFromMetallicTextureGreen = true;
+    // Головка рельса в наборе металлическая (0,92). Металл без окружения
+    // отражать нечего, и он уходит в чёрный, поэтому для неё металличность
+    // задаётся числом: сталь остаётся сталью при одном солнце.
+    material.useMetallnessFromMetallicTextureBlue = metallicFromTexture;
+    material.metallic = 1;
+    material.roughness = 1;
+    if (!metallicFromTexture) {
+      material.metallic = 0.3;
+      material.roughness = 0.42;
+    }
+    material.environmentIntensity = 0;
+    material.backFaceCulling = false;
+    // Покрытие лежит в сантиметрах над сушей: смещение по глубине обязательно,
+    // иначе на дальнем плане Depth-буфер не различает подъём и лента мерцает.
+    // Разные bias у классов разводят перекрёстки: две ленты в одной плоскости
+    // без этого мерцали бы друг сквозь друга.
+    material.zOffset = -2;
+    material.zOffsetUnits = depthBias;
+    surfaces[key] = material;
+  }
+
   return {
     land,
     quay,
     intertidal,
+    surfaces,
     dispose(): void {
       landTexture.dispose();
       quayTexture.dispose();
       intertidalTexture.dispose();
+      for (const texture of surfaceTextures) texture.dispose();
+      for (const material of Object.values(surfaces)) material.dispose();
       land.dispose();
       quay.dispose();
       intertidal.dispose();

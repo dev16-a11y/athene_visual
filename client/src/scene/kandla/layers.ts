@@ -34,6 +34,39 @@ export interface IntertidalPolygon {
   coords: Ring[];
 }
 
+/** Дорога: осевая линия с назначенной по типу шириной покрытия. */
+export interface RoadLine {
+  id: string;
+  kind: string;
+  /** Класс для сцены: дорога / улица / проезд. */
+  cls: "road" | "street" | "service";
+  /** Полная ширина покрытия, м. */
+  width: number;
+  name: string | null;
+  coords: Ring[];
+}
+
+/** Рельсовый путь из OSM: главный, подъездной, сортировочный. */
+export interface RailLine {
+  id: string;
+  kind: string;
+  cls: "main" | "industrial";
+  usage: string | null;
+  service: string | null;
+  gauge: string | null;
+  name: string | null;
+  coords: Ring[];
+}
+
+/** Крановый путь: производная от причального фронта, не данные OSM. */
+export interface CraneRailLine {
+  id: string;
+  front: string;
+  /** Отступ рельса от кромки кордона, м. */
+  setback: number;
+  coords: Ring[];
+}
+
 export interface KandlaMeta {
   name: string;
   title: string;
@@ -72,6 +105,10 @@ export interface KandlaMeta {
     intertidal: number;
     inlandWaterBodies: number;
     saltPonds: number;
+    roads: number;
+    roadsByClass: Record<string, number>;
+    railLines: number;
+    craneRails: number;
   };
   areasKm2: { land: number; water: number };
   calibration: { waterState: number; landState: number };
@@ -99,6 +136,17 @@ export interface KandlaLayers {
     breakwaters: LineLayerItem[];
   };
   intertidal: IntertidalPolygon[];
+  roads: RoadLine[];
+  rail: {
+    lines: RailLine[];
+    craneRails: {
+      derivedFrom: string;
+      setback: number;
+      gauge: number;
+      note: string;
+      lines: CraneRailLine[];
+    };
+  };
 }
 
 /** Понятная ошибка вместо пустой сцены, если данные не подготовлены. */
@@ -149,9 +197,22 @@ interface QuayLayerFile {
 interface IntertidalLayerFile {
   polygons: IntertidalPolygon[];
 }
+interface RoadsLayerFile {
+  lines: RoadLine[];
+}
+interface RailLayerFile {
+  lines: RailLine[];
+  craneRails: {
+    derivedFrom: string;
+    setback: number;
+    gauge: number;
+    note: string;
+    lines: CraneRailLine[];
+  };
+}
 
 export async function loadKandlaLayers(): Promise<KandlaLayers> {
-  const [meta, landFile, waterFile, shorelineFile, quayFile, intertidalFile] =
+  const [meta, landFile, waterFile, shorelineFile, quayFile, intertidalFile, roadsFile, railFile] =
     await Promise.all([
       readJson<KandlaMeta>("meta.json"),
       readJson<LandLayerFile>("land.json"),
@@ -159,6 +220,8 @@ export async function loadKandlaLayers(): Promise<KandlaLayers> {
       readJson<LineLayerFile>("shoreline.json"),
       readJson<QuayLayerFile>("quay.json"),
       readJson<IntertidalLayerFile>("intertidal.json"),
+      readJson<RoadsLayerFile>("roads.json"),
+      readJson<RailLayerFile>("rail.json"),
     ]);
 
   if (!Array.isArray(landFile.polygons) || landFile.polygons.length === 0) {
@@ -177,5 +240,10 @@ export async function loadKandlaLayers(): Promise<KandlaLayers> {
       breakwaters: quayFile.breakwaters ?? [],
     },
     intertidal: intertidalFile.polygons ?? [],
+    roads: roadsFile.lines ?? [],
+    rail: {
+      lines: railFile.lines ?? [],
+      craneRails: railFile.craneRails ?? { derivedFrom: "quay.front", setback: 0, gauge: 0, note: "", lines: [] },
+    },
   };
 }
